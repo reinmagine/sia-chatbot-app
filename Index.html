@@ -56,55 +56,6 @@
         "GR Tracking & Status Monitoring",
       ];
 
-      // Intent database for matching
-      const INTENT_DB = [
-        {
-          id: "po_status",
-          label: "Current status of PO",
-          variations: [
-            "Status of PO",
-            "Current status",
-            "PO status",
-            "PO released",
-            "Where is my order",
-          ],
-        },
-        {
-          id: "po_gr",
-          label: "GR % of PO",
-          variations: [
-            "GR percentage",
-            "How much is GR",
-            "Goods receipt status",
-            "GR status",
-            "Delivered amount",
-          ],
-        },
-        {
-          id: "po_amount",
-          label: "PO Amount",
-          variations: [
-            "PO value",
-            "Total amount",
-            "How much is the order",
-            "PO price",
-            "Contract value",
-          ],
-        },
-      ];
-
-      function calculateSimilarity(str1, str2) {
-        const a = str1.toLowerCase();
-        const b = str2.toLowerCase();
-        if (a === b) return 100;
-        const words1 = a.split(/\s+/);
-        const words2 = b.split(/\s+/);
-        const matches = words1.filter((w) =>
-          words2.some((w2) => w2.includes(w) || w.includes(w2)),
-        ).length;
-        return (matches / Math.max(words1.length, words2.length)) * 100;
-      }
-
       // Custom UI Components
       function Modal({ title, children, onClose }) {
         return (
@@ -415,48 +366,6 @@
           const raw = String(text || "").trim();
           if (!raw) return;
 
-          // Intent Matching Logic
-          if (!INTENT_DB.some((i) => i.label === raw)) {
-            const matches = INTENT_DB.map((intent) => {
-              const scores = intent.variations.map((v) =>
-                calculateSimilarity(raw, v),
-              );
-              return { ...intent, score: Math.max(...scores) };
-            })
-              .filter((m) => m.score > 20)
-              .sort((a, b) => b.score - a.score);
-
-            if (matches.length > 0 && matches[0].score < 90) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: "user-" + Date.now(),
-                  who: "user",
-                  text: raw,
-                  ts: new Date().toISOString(),
-                },
-              ]);
-              setInputValue("");
-              
-              setIsTyping(true);
-              await new Promise((r) => setTimeout(r, 600));
-              
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: "bot-" + Date.now(),
-                  who: "bot",
-                  text: "I'm not quite sure I follow. Did you mean one of these?",
-                  suggestions: matches.slice(0, 3),
-                  ts: new Date().toISOString(),
-                },
-              ]);
-              setIsTyping(false);
-              return;
-            }
-          }
-
-          setIntentSuggestions(null);
           // Set User Message
           setMessages((prev) => [
             ...prev,
