@@ -1,7 +1,745 @@
-<!DOCTYPE html>
-<html>
-<body>
-  awaww
-</body>
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>COMMSCHED — Chat</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+      crossorigin
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+      crossorigin
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      body {
+        font-family:
+          Poppins,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 m-0 p-0 h-[100dvh] flex flex-col">
+    <div
+      id="root"
+      class="h-full w-full max-w-4xl mx-auto flex flex-col bg-white shadow-xl overflow-hidden"
+    ></div>
 
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      const QUICK = [
+        "Shipping",
+        "Tracking",
+        "Returns",
+        "Ordering",
+        "PO / GR Status",
+        "Billing",
+        "Support",
+      ];
+      const PERSISTENT_MENU = [
+        "General PO Status Inquiries",
+        "Aging & Risk Monitoring",
+        "GR Tracking & Status Monitoring",
+      ];
+
+      // Intent database for matching
+      const INTENT_DB = [
+        {
+          id: "po_status",
+          label: "Current status of PO",
+          variations: [
+            "Status of PO",
+            "Current status",
+            "PO status",
+            "PO released",
+            "Where is my order",
+          ],
+        },
+        {
+          id: "po_gr",
+          label: "GR % of PO",
+          variations: [
+            "GR percentage",
+            "How much is GR",
+            "Goods receipt status",
+            "GR status",
+            "Delivered amount",
+          ],
+        },
+        {
+          id: "po_amount",
+          label: "PO Amount",
+          variations: [
+            "PO value",
+            "Total amount",
+            "How much is the order",
+            "PO price",
+            "Contract value",
+          ],
+        },
+      ];
+
+      function calculateSimilarity(str1, str2) {
+        const a = str1.toLowerCase();
+        const b = str2.toLowerCase();
+        if (a === b) return 100;
+        const words1 = a.split(/\s+/);
+        const words2 = b.split(/\s+/);
+        const matches = words1.filter((w) =>
+          words2.some((w2) => w2.includes(w) || w.includes(w2)),
+        ).length;
+        return (matches / Math.max(words1.length, words2.length)) * 100;
+      }
+
+      // Custom UI Components
+      function Modal({ title, children, onClose }) {
+        return (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-end md:items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-4 duration-300">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-6 h-6 text-gray-400"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              {children}
+            </div>
+          </div>
+        );
+      }
+
+      function TutorialView({ onFinish, isEmbedded = false }) {
+        const [step, setStep] = useState(0);
+        const slides = [
+          {
+            icon: "👋",
+            title: "Welcome to COMMSCHED!",
+            desc: "I am your chatbot assistant. I can help you track POs, check GR status, and more.",
+          },
+          {
+            icon: "🔍",
+            title: "What to ask?",
+            desc: 'Try phrases like "Status of PO 45...", "How much is GR\'d?", or use the Menu items below.',
+          },
+          {
+            icon: "⚡",
+            title: "Smart Matching",
+            desc: "If I'm not sure what you mean, I'll offer suggestions. Just tap the best match to get your answer!",
+          },
+        ];
+
+        return (
+          <div className={`flex flex-col gap-6 ${isEmbedded ? "" : "py-4"}`}>
+            <div className="text-6xl text-center">{slides[step].icon}</div>
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-indigo-900 mb-2">
+                {slides[step].title}
+              </h3>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                {slides[step].desc}
+              </p>
+            </div>
+            <div className="flex gap-1.5 justify-center">
+              {slides.map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? "bg-indigo-600 w-6" : "bg-gray-200 w-1.5"}`}
+                />
+              ))}
+            </div>
+            <button
+              onClick={() =>
+                step < slides.length - 1 ? setStep(step + 1) : onFinish()
+              }
+              className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+            >
+              {step < slides.length - 1 ? "Next" : "Start Chatting"}
+            </button>
+          </div>
+        );
+      }
+
+      function MessageContent({ text, suggestions, onSelectSuggestion }) {
+        const rawText = String(text || "");
+        
+        // Inline Suggestions Rendering logic
+        const renderSuggestions = () => {
+          if (!suggestions || suggestions.length === 0) return null;
+          return (
+            <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-2.5">
+              <p className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest pl-1">
+                Did you mean...
+              </p>
+              <div className="flex flex-col gap-2">
+                {suggestions.map((intent, i) => (
+                  <button
+                    key={intent.id}
+                    onClick={() => onSelectSuggestion(intent.label)}
+                    className="flex items-center justify-between w-full text-left p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-200 transition-all group"
+                  >
+                    <span className="text-[14px] font-semibold text-indigo-900">
+                      <span className="text-indigo-300 mr-2.5">{String.fromCharCode(65 + i)}.</span>
+                      {intent.label}
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 text-indigo-300 group-hover:translate-x-0.5 transition-transform">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        };
+
+        if (
+          rawText.includes("[TABLE]") ||
+          (rawText.includes("|") && rawText.includes("---"))
+        ) {
+          const cleanText = rawText.replace(/\[\/?TABLE\]/g, "");
+          const lines = cleanText.split("\n");
+          const tableLines = lines.filter((l) => l.trim().startsWith("|"));
+          const nonTableLines = lines.filter((l) => !l.trim().startsWith("|"));
+
+          if (tableLines.length > 2) {
+            const parseRow = (row) =>
+              row
+                .split("|")
+                .map((c) => c.trim())
+                .filter((_, i, arr) => i > 0 && i < arr.length - 1);
+            const headers = parseRow(tableLines[0]);
+            const rows = tableLines.slice(2).map(parseRow);
+
+            return (
+              <div className="flex flex-col gap-2 w-full">
+                {nonTableLines.map((ln, i) =>
+                  ln.trim() ? (
+                    <div key={`txt-${i}`} className="whitespace-pre-wrap">
+                      {ln}
+                    </div>
+                  ) : null,
+                )}
+                <div className="overflow-x-auto w-full mt-1 mb-1 rounded-lg border border-gray-200 shadow-sm">
+                  <table className="min-w-full text-sm text-left">
+                    <thead className="bg-indigo-50 text-indigo-900 border-b border-indigo-100">
+                      <tr>
+                        {headers.map((h, i) => (
+                          <th
+                            key={`h-${i}`}
+                            className="px-3 py-2.5 font-semibold whitespace-nowrap"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, i) => (
+                        <tr
+                          key={`r-${i}`}
+                          className={
+                            i % 2 === 0
+                              ? "bg-white"
+                              : "bg-gray-50 hover:bg-gray-100"
+                          }
+                        >
+                          {row.map((cell, j) => (
+                            <td
+                              key={`c-${i}-${j}`}
+                              className="px-3 py-2 border-b border-gray-100 whitespace-nowrap text-gray-700"
+                            >
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {renderSuggestions()}
+              </div>
+            );
+          }
+        }
+
+        return (
+          <React.Fragment>
+            {rawText.split("\n").map((ln, i) => (
+              <div key={i} className="min-h-[1.25em] whitespace-pre-wrap">
+                {ln}
+              </div>
+            ))}
+            {renderSuggestions()}
+          </React.Fragment>
+        );
+      }
+
+      function ChatApp() {
+        const [hasStarted, setHasStarted] = useState(false);
+        const [showResetConfirm, setShowResetConfirm] = useState(false);
+        const [intentSuggestions, setIntentSuggestions] = useState(null);
+        const [messages, setMessages] = useState([]);
+        const [inputValue, setInputValue] = useState("");
+        const [isTyping, setIsTyping] = useState(false);
+        const messagesEndRef = useRef(null);
+        const inputRef = useRef(null);
+
+        // Load saved chat from local storage
+        useEffect(() => {
+          if (localStorage.getItem("commsched_started")) {
+            setHasStarted(true);
+          }
+          try {
+            const s = localStorage.getItem("commsched_chat");
+            if (s) {
+              const parsed = JSON.parse(s);
+              // Handle legacy { messages: [] } object from previous version
+              setMessages(
+                Array.isArray(parsed) ? parsed : parsed.messages || [],
+              );
+            }
+          } catch (e) {}
+        }, []);
+
+        // Save chat back to storage on updates
+        useEffect(() => {
+          if (messages.length > 0) {
+            localStorage.setItem("commsched_chat", JSON.stringify(messages));
+          }
+        }, [messages]);
+
+        // Welcome message trigger
+        useEffect(() => {
+          if (
+            messages.length === 0 &&
+            !localStorage.getItem("commsched_chat")
+          ) {
+            setMessages([
+              {
+                id: "bot-" + Date.now(),
+                who: "bot",
+                text: "Welcome to COMMSCHED! How can I help today?",
+                ts: new Date().toISOString(),
+              },
+              {
+                id: "bot-" + (Date.now() + 1),
+                who: "bot",
+                text: "Try quick replies below to explore common tasks.",
+                ts: new Date().toISOString(),
+              },
+            ]);
+          }
+        }, []);
+
+        // Auto-scroll inside chat
+        const scrollToBottom = () => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        };
+
+        useEffect(() => {
+          scrollToBottom();
+        }, [messages, isTyping]);
+
+        // Built-in responses
+        const botRespondFor = (text) => {
+          const t = String(text).toLowerCase();
+          if (t.includes("shipping"))
+            return "Please provide your order number so I can check shipping status.";
+          if (t.includes("tracking"))
+            return 'Enter the tracking number or choose "Check order status".';
+          if (t.includes("returns"))
+            return "To start a return, select the order and item. Do you want steps or to create a return request?";
+          if (t.includes("ordering"))
+            return "What would you like to order? I can suggest products or check availability.";
+          if (
+            t.includes("po") ||
+            t.includes("gr") ||
+            t.includes("general po status")
+          ) {
+            return "Here is the recent PO status overview:\n\n| PO Number | Vendor | Status | Amount |\n| --- | --- | --- | --- |\n| PO450001 | Acme Corp | Released | $5,000 |\n| PO450002 | Globex | GR Partial | $12,400 |\n| PO450003 | Initech | Pending | $890 |";
+          }
+          if (/^\s*(hi|hello|hey)\b/.test(t))
+            return "Hi! I can help with Shipping, Tracking, Returns, Ordering, PO / GR Status. Try one of the quick replies below.";
+          return "Thanks — I forwarded your request. What would you like to do next? Try 'Shipping' or 'PO / GR Status'.";
+        };
+
+        // Hook for Apps Script if deployed there
+        const sendToServer = (text) => {
+          return new Promise((resolve) => {
+            if (window.google && google.script && google.script.run) {
+              try {
+                google.script.run
+                  .withSuccessHandler(resolve)
+                  .withFailureHandler(() => resolve(botRespondFor(text)))
+                  .getGeminiResponse(text, messages);
+                return;
+              } catch (e) {
+                resolve(botRespondFor(text));
+                return;
+              }
+            }
+            resolve(botRespondFor(text));
+          });
+        };
+
+        const handleSend = async (text) => {
+          const raw = String(text || "").trim();
+          if (!raw) return;
+
+          // Intent Matching Logic
+          if (!INTENT_DB.some((i) => i.label === raw)) {
+            const matches = INTENT_DB.map((intent) => {
+              const scores = intent.variations.map((v) =>
+                calculateSimilarity(raw, v),
+              );
+              return { ...intent, score: Math.max(...scores) };
+            })
+              .filter((m) => m.score > 20)
+              .sort((a, b) => b.score - a.score);
+
+            if (matches.length > 0 && matches[0].score < 90) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: "user-" + Date.now(),
+                  who: "user",
+                  text: raw,
+                  ts: new Date().toISOString(),
+                },
+              ]);
+              setInputValue("");
+              
+              setIsTyping(true);
+              await new Promise((r) => setTimeout(r, 600));
+              
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: "bot-" + Date.now(),
+                  who: "bot",
+                  text: "I'm not quite sure I follow. Did you mean one of these?",
+                  suggestions: matches.slice(0, 3),
+                  ts: new Date().toISOString(),
+                },
+              ]);
+              setIsTyping(false);
+              return;
+            }
+          }
+
+          setIntentSuggestions(null);
+          // Set User Message
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: "user-" + Date.now(),
+              who: "user",
+              text: raw,
+              ts: new Date().toISOString(),
+            },
+          ]);
+          setInputValue("");
+          inputRef.current && inputRef.current.focus();
+
+          setIsTyping(true);
+          const delay = 400 + Math.random() * 900;
+          await new Promise((r) => setTimeout(r, delay));
+
+          try {
+            const resp = await sendToServer(raw);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: "bot-" + Date.now(),
+                who: "bot",
+                text: String(resp || ""),
+                ts: new Date().toISOString(),
+              },
+            ]);
+          } catch (e) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: "bot-" + Date.now(),
+                who: "bot",
+                text: "Sorry, something went wrong.",
+                ts: new Date().toISOString(),
+              },
+            ]);
+          }
+          setIsTyping(false);
+        };
+
+        const onKeyDown = (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSend(inputValue);
+          }
+        };
+
+        const handleGetStarted = () => {
+          setHasStarted(true);
+          localStorage.setItem("commsched_started", "true");
+        };
+
+        const finishTutorial = () => {
+          setHasStarted(true);
+          localStorage.setItem("commsched_started", "true");
+        };
+
+        const handleResetChat = () => {
+          setShowResetConfirm(true);
+        };
+
+        const confirmReset = () => {
+          localStorage.removeItem("commsched_chat");
+          localStorage.removeItem("commsched_started");
+          setMessages([]);
+          setHasStarted(false);
+          setShowResetConfirm(false);
+          setInputValue("");
+        };
+
+        return (
+          <div className="flex flex-col h-full w-full">
+            {/* Modals & Dialogs */}
+            {showResetConfirm && (
+              <Modal
+                title="Clear History?"
+                onClose={() => setShowResetConfirm(false)}
+              >
+                <div className="flex flex-col gap-6 py-2">
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    Are you sure you want to delete all messages? This action
+                    cannot be undone.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowResetConfirm(false)}
+                      className="flex-1 py-3 px-4 rounded-2xl border border-gray-200 font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmReset}
+                      className="flex-1 py-3 px-4 rounded-2xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors shadow-lg shadow-red-100"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+            )}
+
+            {/* Header */}
+            <header className="flex items-center justify-between p-4 border-b bg-white shrink-0 shadow-sm z-10 w-full">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md">
+                  C
+                </div>
+                <div>
+                  <div className="font-bold text-indigo-800 text-lg leading-tight tracking-wide">
+                    COMMSCHED
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mt-0.5">
+                    Chatbot Assistant
+                  </div>
+                </div>
+              </div>
+              {hasStarted && (
+                <button
+                  onClick={handleResetChat}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all font-semibold text-xs border border-gray-100 hover:border-red-100"
+                  title="Clear all messages and start a new conversation"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    className="w-3.5 h-3.5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992h4.992m12.144 3.251c-1.875 1.905-4.5 3.051-7.379 3.051-4.992 0-9.185-3.374-10.456-7.989"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 10.137c1.875-1.905 4.5-3.051 7.379-3.051 4.992 0 9.185 3.374 10.456 7.989"
+                    />
+                  </svg>
+                  <span>Restart Chat</span>
+                </button>
+              )}
+            </header>
+
+            {/* Messages Body */}
+            <main
+              className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 flex flex-col gap-5"
+              aria-live="polite"
+            >
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex w-full ${m.who === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[90%] md:max-w-[75%] px-4 py-3 rounded-2xl text-[15px] shadow-sm ${m.who === "user" ? "bg-indigo-50 text-indigo-900 rounded-br-sm" : "bg-white border border-gray-100 text-gray-800 rounded-bl-sm overflow-hidden"}`}
+                  >
+                    <MessageContent 
+                      text={m.text} 
+                      suggestions={m.suggestions} 
+                      onSelectSuggestion={(label) => handleSend(label)} 
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-1.5 bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-bl-sm text-sm shadow-sm">
+                    <span
+                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0s" }}
+                    ></span>
+                    <span
+                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0.15s" }}
+                    ></span>
+                    <span
+                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0.3s" }}
+                    ></span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </main>
+
+            {!hasStarted ? (
+              <div className="p-6 md:p-10 bg-white border-t shrink-0 flex flex-col items-center justify-center gap-8 min-h-[400px]">
+                <div className="w-full max-w-sm bg-slate-50 rounded-[32px] p-8 border border-slate-100 shadow-sm">
+                  <TutorialView onFinish={finishTutorial} isEmbedded={true} />
+                </div>
+                <div className="flex flex-col items-center gap-4 w-full max-w-sm">
+                  <p className="text-[13px] text-gray-400 text-center font-medium">
+                    Ready to begin?
+                  </p>
+                  <button
+                    onClick={finishTutorial}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-5 rounded-2xl shadow-xl shadow-indigo-100 transition-all active:scale-[0.98] focus:ring-4 focus:ring-indigo-100"
+                  >
+                    Get Started
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <React.Fragment>
+                {/* Persistent Menu */}
+                <div className="pt-3 pb-2 px-3 md:px-6 border-t bg-slate-50 flex gap-2 flex-nowrap overflow-x-auto whitespace-nowrap shrink-0 snap-x">
+                  <div className="text-[11px] font-bold text-gray-400 flex items-center px-1 uppercase tracking-widest shrink-0 select-none">
+                    Menu
+                  </div>
+                  {PERSISTENT_MENU.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => handleSend(label)}
+                      className="snap-start text-[13px] px-3.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-100 transition-all font-medium whitespace-nowrap shrink-0 shadow-sm"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Quick Replies row */}
+                <div className="p-3 md:px-6 bg-white flex gap-2 flex-nowrap overflow-x-auto whitespace-nowrap shrink-0 snap-x">
+                  {QUICK.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => handleSend(label)}
+                      className="snap-start text-sm px-4 py-2 rounded-full border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all font-medium whitespace-nowrap shrink-0"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Composer Output row */}
+                <form
+                  className="p-4 md:px-6 md:pb-5 border-t bg-white flex gap-3 items-end shrink-0"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSend(inputValue);
+                  }}
+                >
+                  <textarea
+                    ref={inputRef}
+                    rows="1"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={onKeyDown}
+                    placeholder="Type a message..."
+                    className="flex-1 resize-none border border-gray-300 rounded-2xl px-4 py-3.5 text-[15px] focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-sm transition-all max-h-32 overflow-y-auto w-full"
+                    aria-label="Message input"
+                  ></textarea>
+                  <button
+                    type="submit"
+                    disabled={!inputValue.trim()}
+                    className="bg-indigo-600 disabled:bg-indigo-300 hover:bg-indigo-700 text-white px-5 py-3.5 rounded-2xl font-semibold shadow-sm transition-all flex items-center justify-center shrink-0"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-6 h-6"
+                    >
+                      <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+                    </svg>
+                  </button>
+                </form>
+              </React.Fragment>
+            )}
+          </div>
+        );
+      }
+
+      const rootElement = document.getElementById("root");
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(<ChatApp />);
+    </script>
+  </body>
 </html>
