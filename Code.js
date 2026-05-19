@@ -16,7 +16,7 @@ function getGeminiResponse(userText, messages) {
     return fallback;
   }
   if (parsed.confidence < CONFIDENCE_THRESHOLD) {
-    return fallback;
+    return showDidYouMean(parsed.suggestions);
   }
 
   const intent = INTENTS.find((i) => i.name === parsed.intent);
@@ -31,6 +31,8 @@ function getGeminiResponse(userText, messages) {
 
   const handlers = {
     checkPoStatus: checkPoStatus,
+    checkPoGrStatus: checkPoGrStatus,
+    checkPoRemainingBalance: checkPoRemainingBalance,
   };
 
   const handler = handlers[intent.handler];

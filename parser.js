@@ -111,6 +111,51 @@ function scoreIntent(inputForMatch, phrase) {
 	return { score: score, jaccard: jaccard, levenshtein: levenshteinSim };
 }
 
+function formatSuggestionLabel(phrase, poNumber) {
+	let label = String(phrase || "").trim();
+	if (!label) return "";
+
+	if (poNumber) {
+		label = label.replace(/\bPO X\b/gi, "PO " + poNumber);
+		label = label.replace(/\bX\b/gi, poNumber);
+	} else {
+		label = label.replace(/\bPO X\b/gi, "PO");
+		label = label.replace(/\bX\b/gi, "");
+	}
+
+	label = label.replace(/\s+/g, " ").trim();
+	return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function scoreIntentAgainstPhrases(inputForMatch, phrases) {
+	let bestScore = 0;
+	let bestPhrase = null;
+
+	(phrases || []).forEach((phrase) => {
+		const scored = scoreIntent(inputForMatch, phrase);
+		if (scored.score > bestScore) {
+			bestScore = scored.score;
+			bestPhrase = phrase;
+		}
+	});
+
+	return { score: bestScore, phrase: bestPhrase };
+}
+
+function buildIntentSuggestion(intent, inputForMatch, poNumber) {
+	if (!intent || !intent.name) return null;
+	const best = scoreIntentAgainstPhrases(inputForMatch, intent.phrases);
+	if (!best.phrase) return null;
+
+	return {
+		id: intent.name,
+		intent: intent.name,
+		label: formatSuggestionLabel(best.phrase, poNumber),
+		matchedPhrase: best.phrase,
+		score: best.score,
+	};
+}
+
 function parseInput(userText) {
 	const normalized = normalizeText(userText);
 	if (!normalized) {
@@ -128,17 +173,23 @@ function parseInput(userText) {
 	let bestIntent = null;
 	let bestScore = 0;
 	let bestPhrase = null;
+	const suggestions = [];
 
 	INTENTS.forEach((intent) => {
-		intent.phrases.forEach((phrase) => {
-			const scored = scoreIntent(normalizedForMatch, phrase);
-			if (scored.score > bestScore) {
-				bestScore = scored.score;
-				bestIntent = intent;
-				bestPhrase = phrase;
-			}
-		});
+		const bestForIntent = scoreIntentAgainstPhrases(normalizedForMatch, intent.phrases);
+		if (bestForIntent.score > bestScore) {
+			bestScore = bestForIntent.score;
+			bestIntent = intent;
+			bestPhrase = bestForIntent.phrase;
+		}
+
+		const suggestion = buildIntentSuggestion(intent, normalizedForMatch, poNumber);
+		if (suggestion) {
+			suggestions.push(suggestion);
+		}
 	});
+
+	suggestions.sort((a, b) => b.score - a.score);
 
 	const entities = { PO_NUMBER: poNumber };
 
@@ -156,6 +207,7 @@ function parseInput(userText) {
 		confidence: bestScore,
 		entities: entities,
 		matchedPhrase: bestPhrase,
+		suggestions: suggestions.slice(0, 3),
 	};
 }
 
