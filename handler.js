@@ -39,3 +39,23 @@ function checkPoRemainingBalance(entities) {
 	const poNumber = entities.PO_NUMBER;
 	return "The remaining balance of PO " + poNumber + " is: [balance here]";
 }
+
+function checkPoLatestGrDate(entities) {
+	const poNumber = entities.PO_NUMBER;
+	return "The latest GR date of PO " + poNumber + " is: [date here]";
+}
+/****************** PO AGING ******************/
+
+function checkPoAging(entities) {
+	const poNumber = entities.PO_NUMBER;
+	return "PO " + poNumber + " is [age here] days old";
+}
+
+function checkPoAgingExceeded(entities) {
+	const poNumber = entities.PO_NUMBER;
+	return "PO " + poNumber + " has exceeded standard SLA: [yes/no here]";
+}
+
+function checkPoAgingExceededList(entities) {
+	return "Here are the POs that have exceeded the standard SLA: [list of POs here]";
+}

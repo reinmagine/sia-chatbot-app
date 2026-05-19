@@ -56,5 +56,48 @@ const INTENTS = [
 		],
 		requiredEntities: ["PO_NUMBER"],
 		handler: "checkPoRemainingBalance"
+	},
+	{
+		name: "check_po_latest_gr_date",
+		phrases: [
+			"PO X latest GR date",
+			"latest GR date of PO X",
+			"when was the last GR posted for PO X",
+		],
+		requiredEntities: ["PO_NUMBER"],
+		handler: "checkPoLatestGrDate"
+	},
+
+	/****************** PO AGING ******************/
+	{
+		name: "check_po_aging",
+		phrases: [
+			"PO X aging",
+			"how old is PO X",
+			"what is the age of PO X",
+			"what is the aging of PO X"
+		],
+		requiredEntities: ["PO_NUMBER"],
+		handler: "checkPoAging"
+	},
+	{
+		name: "check_po_aging_exceeded",
+		phrases: [
+			"has PO X exceeded standard SLA",
+			"is PO X aging exceeded",
+			"is PO X expired",
+		],
+		requiredEntities: ["PO_NUMBER"],
+		handler: "checkPoAgingExceeded"
+	},
+	{
+		name: "check_po_aging_exceeded_list",
+		phrases: [
+			"which POs have exceeded standard SLA",
+			"list all POs that have exceeded standard SLA",
+			"which POs are aging beyond 12 months?",
+		],
+		requiredEntities: [],
+		handler: "checkPoAgingExceededList"
 	}
 ];

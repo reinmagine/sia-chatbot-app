@@ -5,7 +5,7 @@ function doGet() {
 }
 
 function getGeminiResponse(userText, messages) {
-  const CONFIDENCE_THRESHOLD = 0.9;
+  const CONFIDENCE_THRESHOLD = 0.5;
   const fallback = "Sorry, I’m not sure I understood that.";
 
   const parsed = parseInput(userText);
@@ -33,6 +33,10 @@ function getGeminiResponse(userText, messages) {
     checkPoStatus: checkPoStatus,
     checkPoGrStatus: checkPoGrStatus,
     checkPoRemainingBalance: checkPoRemainingBalance,
+    checkPoLatestGrDate: checkPoLatestGrDate,
+    checkPoAging: checkPoAging,
+    checkPoAgingExceeded: checkPoAgingExceeded,
+    checkPoAgingExceededList: checkPoAgingExceededList,
   };
 
   const handler = handlers[intent.handler];
