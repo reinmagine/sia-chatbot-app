@@ -57,7 +57,43 @@
       ];
 
       const LOGO_IMAGE_URL =
-        "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia.png";
+        "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-logo.png";
+
+      const EXPRESSIONS = {
+        neutral: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-logo.png",
+        celebration: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-celebration.png",
+        concerned: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-concerned.png",
+        confirm: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-confirm.png",
+        confused: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-confused.png",
+        doubtful: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-doubtful.png",
+        excited: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-excited.png",
+        inspired: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-inspired.png",
+        loving: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-loving.png",
+        stressed: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-stressed.png",
+        surprised: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-surprised.png",
+        thinking: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-thinking.png",
+        tired: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-tired.png",
+        waiting: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-waiting.png",
+        wink: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-wink.png",
+      };
+
+      const guessExpression = (text) => {
+        const t = String(text).toLowerCase();
+        if (t.match(/\b(yay|awesome|great|thanks|thank you|celebrate|done|success)\b/)) return "celebration";
+        if (t.match(/\b(wow|whoa|really|omg)\b/)) return "surprised";
+        if (t.match(/\b(sorry|apologize|issue|error|concerned|wrong)\b/)) return "concerned";
+        if (t.match(/\b(wait|hold on|moment|checking)\b/)) return "waiting";
+        if (t.match(/\b(confused|not sure|don't know|what)\b|\?/)) return "confused";
+        if (t.match(/\b(inspired|idea|let's)\b/)) return "inspired";
+        if (t.match(/\b(tired|exhausted)\b/)) return "tired";
+        if (t.match(/\b(love|heart|perfect)\b/)) return "loving";
+        if (t.match(/\b(wink|hint)\b/)) return "wink";
+        if (t.match(/\b(stress|hard|difficult)\b/)) return "stressed";
+        if (t.match(/\b(confirm|yes|sure|absolutely)\b/)) return "confirm";
+        if (t.match(/\b(doubt|maybe|perhaps|unlikely)\b/)) return "doubtful";
+        if (t.match(/\b(excited|can't wait|looking forward)\b/) || t.includes("!")) return "excited";
+        return "neutral";
+      };
 
       function LogoMark() {
         const [hasError, setHasError] = useState(false);
@@ -334,6 +370,16 @@
         const messagesEndRef = useRef(null);
         const inputRef = useRef(null);
 
+        // Preload common expression images
+        useEffect(() => {
+          ["neutral", "thinking", "excited"].forEach((ext) => {
+            if (EXPRESSIONS[ext]) {
+              const img = new Image();
+              img.src = EXPRESSIONS[ext];
+            }
+          });
+        }, []);
+
         // Load saved chat from local storage
         useEffect(() => {
           if (localStorage.getItem("commsched_started")) {
@@ -369,12 +415,14 @@
                 id: "bot-" + Date.now(),
                 who: "bot",
                 text: "Welcome to COMMSCHED! How can I help today?",
+                expression: "excited",
                 ts: new Date().toISOString(),
               },
               {
                 id: "bot-" + (Date.now() + 1),
                 who: "bot",
                 text: "Try quick replies below to explore common tasks.",
+                expression: "wink",
                 ts: new Date().toISOString(),
               },
             ]);
@@ -457,12 +505,15 @@
             const resp = await sendToServer(raw);
             const isStructuredResponse =
               resp && typeof resp === "object" && !Array.isArray(resp);
+            const textVal = isStructuredResponse ? String(resp.text || "") : String(resp || "");
+            
             setMessages((prev) => [
               ...prev,
               {
                 id: "bot-" + Date.now(),
                 who: "bot",
-                text: isStructuredResponse ? String(resp.text || "") : String(resp || ""),
+                text: textVal,
+                expression: isStructuredResponse && resp.expression ? resp.expression : guessExpression(textVal),
                 suggestions:
                   isStructuredResponse && Array.isArray(resp.suggestions)
                     ? resp.suggestions
@@ -477,6 +528,7 @@
                 id: "bot-" + Date.now(),
                 who: "bot",
                 text: "Sorry, something went wrong.",
+                expression: "stressed",
                 ts: new Date().toISOString(),
               },
             ]);
@@ -596,10 +648,18 @@
               {messages.map((m) => (
                 <div
                   key={m.id}
-                  className={`flex w-full ${m.who === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex w-full items-end ${m.who === "user" ? "justify-end" : "justify-start"}`}
                 >
+                  {m.who !== "user" && (
+                    <img
+                      src={EXPRESSIONS[m.expression] || EXPRESSIONS.neutral}
+                      alt="SIA"
+                      className="w-10 h-10 rounded-xl mr-2 object-cover border border-gray-100 shadow-sm bg-white shrink-0"
+                      onError={(e) => { e.target.src = LOGO_IMAGE_URL; }}
+                    />
+                  )}
                   <div
-                    className={`max-w-[90%] md:max-w-[75%] text-[15px] shadow-sm ${m.who === "user" ? "bg-indigo-50 text-indigo-900 rounded-br-sm px-4 py-3" : m.suggestions ? "bg-white border border-gray-100 text-gray-800 rounded-2xl overflow-hidden p-6 shadow-md" : "bg-white border border-gray-100 text-gray-800 rounded-bl-sm overflow-hidden px-4 py-3"}`}
+                    className={`max-w-[85%] md:max-w-[75%] text-[15px] shadow-sm flex flex-col ${m.who === "user" ? "bg-indigo-50 text-indigo-900 rounded-2xl rounded-br-sm px-4 py-3" : m.suggestions ? "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-sm overflow-hidden p-6 shadow-md" : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-sm overflow-hidden px-4 py-3"}`}
                   >
                     <MessageContent 
                       text={m.text} 
@@ -611,7 +671,13 @@
               ))}
 
               {isTyping && (
-                <div className="flex justify-start">
+                <div className="flex justify-start items-end">
+                  <img
+                    src={EXPRESSIONS.thinking}
+                    alt="SIA thinking"
+                    className="w-10 h-10 rounded-xl mr-2 object-cover border border-gray-100 shadow-sm bg-white shrink-0"
+                    onError={(e) => { e.target.src = LOGO_IMAGE_URL; }}
+                  />
                   <div className="flex items-center gap-1.5 bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-bl-sm text-sm shadow-sm">
                     <span
                       className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
