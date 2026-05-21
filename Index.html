@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>COMMSCHED — Chat</title>
+    <title>SIA — Chat</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap"
       rel="stylesheet"
@@ -55,6 +55,47 @@
         "Aging & Risk Monitoring",
         "GR Tracking & Status Monitoring",
       ];
+
+      const LOGO_FILE_ID = "10AlyHkfuFJm3yUDhK_Oorxb3B_SgYVUb";
+      const LOGO_FILE_URL = `https://drive.google.com/file/d/${LOGO_FILE_ID}/view`;
+      const LOGO_SOURCES = [
+        `https://drive.google.com/uc?export=view&id=${LOGO_FILE_ID}`,
+        `https://drive.google.com/thumbnail?id=${LOGO_FILE_ID}&sz=w256`,
+      ];
+
+      function LogoMark() {
+        const [sourceIndex, setSourceIndex] = useState(0);
+        const source = LOGO_SOURCES[sourceIndex] || null;
+
+        return (
+          <a
+            href={LOGO_FILE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-12 h-12 shrink-0"
+            aria-label="Open chatbot logo in a new tab"
+            title="Open logo in new tab"
+          >
+            {source ? (
+              <img
+                src={source}
+                alt=""
+                aria-hidden="true"
+                className="w-12 h-12 rounded-xl object-cover shadow-md bg-white"
+                onError={() =>
+                  setSourceIndex((current) =>
+                    current < LOGO_SOURCES.length - 1 ? current + 1 : current,
+                  )
+                }
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md">
+                S
+              </div>
+            )}
+          </a>
+        );
+      }
 
       // Custom UI Components
       function Modal({ title, children, onClose }) {
@@ -524,15 +565,13 @@
             {/* Header */}
             <header className="flex items-center justify-between p-4 border-b bg-white shrink-0 shadow-sm z-10 w-full">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md">
-                  C
-                </div>
+                <LogoMark />
                 <div>
                   <div className="font-bold text-indigo-800 text-lg leading-tight tracking-wide">
-                    COMMSCHED
+                    SIA
                   </div>
                   <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mt-0.5">
-                    Chatbot Assistant
+                    Status &amp; Insights Assistant
                   </div>
                 </div>
               </div>
