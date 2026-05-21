@@ -65,6 +65,8 @@ const INTENTS = [
 		phrases: [
 			"PO X latest GR date",
 			"latest GR date of PO X",
+			"last GR date of PO X",
+			"last GR for PO X",
 			"when was the last GR posted for PO X",
 		],
 		requiredEntities: ["PO_NUMBER"],

@@ -86,8 +86,28 @@ function checkPoRemainingBalance(entities) { // done
 }
 
 function checkPoLatestGrDate(entities) {
-	const poNumber = entities.PO_NUMBER;
-	return "The latest GR date of <b>PO " + poNumber + "</b> is: [date here]";
+	const poNumber = String(entities.PO_NUMBER || "").trim();
+	if (!poNumber) {
+		return "Cannot find <b>PO X</b> in latest COMMSCHED sheet.";
+	}
+
+	const lookup = lookupCommschedPoRow_(poNumber, ["latestGrDate"]);
+	if (!lookup || !lookup.found) {
+		return getCommschedNotFoundMessage_(poNumber);
+	}
+
+	const latestGrDateRaw = lookup.values ? lookup.values.latestGrDate : "";
+	const latestGrDateValue = String(latestGrDateRaw || "").trim();
+	if (!latestGrDateValue) {
+		return "<b>PO " + poNumber + "</b> is not yet GR'd.";
+	}
+
+	const parsedDate = parseDateValue_(latestGrDateRaw);
+	const formattedDate = parsedDate
+		? Utilities.formatDate(parsedDate, Session.getScriptTimeZone(), "MMM d, yyyy")
+		: latestGrDateValue;
+
+	return "The last GR for <b>PO " + poNumber + "</b> was posted on " + formattedDate + ".";
 }
 /****************** PO AGING ******************/
 
