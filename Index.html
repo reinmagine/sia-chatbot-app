@@ -622,17 +622,12 @@
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2.5"
-                    className="w-3.5 h-3.5"
+                    className="w-4 h-4"
                   >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992h4.992m12.144 3.251c-1.875 1.905-4.5 3.051-7.379 3.051-4.992 0-9.185-3.374-10.456-7.989"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 10.137c1.875-1.905 4.5-3.051 7.379-3.051 4.992 0 9.185 3.374 10.456 7.989"
+                      d="M21 2v6h-6M21 8.2A9 9 0 1112 3a9 9 0 019 5.2z"
                     />
                   </svg>
                   <span>Restart Chat</span>
@@ -727,20 +722,6 @@
                       type="button"
                       onClick={() => handleSend(label)}
                       className="snap-start text-[13px] px-3.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-100 transition-all font-medium whitespace-nowrap shrink-0 shadow-sm"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Quick Replies row */}
-                <div className="p-3 md:px-6 bg-white flex gap-2 flex-nowrap overflow-x-auto whitespace-nowrap shrink-0 snap-x">
-                  {QUICK.map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => handleSend(label)}
-                      className="snap-start text-sm px-4 py-2 rounded-full border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all font-medium whitespace-nowrap shrink-0"
                     >
                       {label}
                     </button>
