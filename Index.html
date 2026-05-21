@@ -154,7 +154,7 @@
         const slides = [
           {
             icon: "👋",
-            title: "Welcome to COMMSCHED!",
+            title: "Welcome to SIA!",
             desc: "I am your chatbot assistant. I can help you track POs, check GR status, and more.",
           },
           {
@@ -382,11 +382,11 @@
 
         // Load saved chat from local storage
         useEffect(() => {
-          if (localStorage.getItem("commsched_started")) {
+          if (localStorage.getItem("sia_started")) {
             setHasStarted(true);
           }
           try {
-            const s = localStorage.getItem("commsched_chat");
+            const s = localStorage.getItem("sia_chat");
             if (s) {
               const parsed = JSON.parse(s);
               // Handle legacy { messages: [] } object from previous version
@@ -400,7 +400,7 @@
         // Save chat back to storage on updates
         useEffect(() => {
           if (messages.length > 0) {
-            localStorage.setItem("commsched_chat", JSON.stringify(messages));
+            localStorage.setItem("sia_chat", JSON.stringify(messages));
           }
         }, [messages]);
 
@@ -408,13 +408,13 @@
         useEffect(() => {
           if (
             messages.length === 0 &&
-            !localStorage.getItem("commsched_chat")
+            !localStorage.getItem("sia_chat")
           ) {
             setMessages([
               {
                 id: "bot-" + Date.now(),
                 who: "bot",
-                text: "Welcome to COMMSCHED! How can I help today?",
+                text: "Welcome to SIA! How can I help today?",
                 expression: "excited",
                 ts: new Date().toISOString(),
               },
@@ -545,12 +545,12 @@
 
         const handleGetStarted = () => {
           setHasStarted(true);
-          localStorage.setItem("commsched_started", "true");
+          localStorage.setItem("sia_started", "true");
         };
 
         const finishTutorial = () => {
           setHasStarted(true);
-          localStorage.setItem("commsched_started", "true");
+          localStorage.setItem("sia_started", "true");
         };
 
         const handleResetChat = () => {
@@ -558,8 +558,8 @@
         };
 
         const confirmReset = () => {
-          localStorage.removeItem("commsched_chat");
-          localStorage.removeItem("commsched_started");
+          localStorage.removeItem("sia_chat");
+          localStorage.removeItem("sia_started");
           setMessages([]);
           setHasStarted(false);
           setShowResetConfirm(false);
