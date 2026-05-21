@@ -31,6 +31,121 @@ function getMissingEntityMessage(entityKey) {
 	return prompts[entityKey] || "Please provide more information";
 }
 
+function normalizeDashCharacters_(text) {
+	return String(text || "").replace(/[‐‑‒–—―−]/g, "-");
+}
+
+/****************** COMMSCHED SHARED HELPERS ******************/
+
+function getCommschedNotFoundMessage_(poNumber) {
+	return "Cannot find <b>PO " + poNumber + "</b> in latest COMMSCHED sheet.";
+}
+
+function getCommschedNoDataMessage_(poNumber) {
+	return "No data found for <b>PO " + poNumber + "</b>.";
+}
+
+function formatCsvValue_(value) {
+	const text = String(value === undefined || value === null ? "" : value);
+	if (/[",\n\r]/.test(text)) {
+		return '"' + text.replace(/"/g, '""') + '"';
+	}
+	return text;
+}
+
+function buildCsvContent_(headers, rows) {
+	const lines = [];
+	lines.push(headers.map(formatCsvValue_).join(","));
+	for (let i = 0; i < rows.length; i += 1) {
+		lines.push(rows[i].map(formatCsvValue_).join(","));
+	}
+	return lines.join("\r\n");
+}
+
+function normalizePoSlaCellValue_(value) {
+	return normalizeDashCharacters_(String(value || ""))
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function getPoSlaBucketInfo_(value) {
+	const normalized = normalizePoSlaCellValue_(value);
+	const buckets = {
+		"a. <6 months": { cellValue: "a. <6 months", code: "a", label: "<6 months", rank: 1 },
+		"b. 6-9 months": { cellValue: "b. 6-9 months", code: "b", label: "6-9 months", rank: 2 },
+		"c. 9-12 months": { cellValue: "c. 9-12 months", code: "c", label: "9-12 months", rank: 3 },
+		"d. 12-24 months": { cellValue: "d. 12-24 months", code: "d", label: "12-24 months", rank: 4 },
+		"e. >24 months": { cellValue: "e. >24 months", code: "e", label: ">24 months", rank: 5 },
+	};
+
+	return buckets[normalized] || null;
+}
+
+function resolvePoSlaBucketCellsForFilter_(rawFilter) {
+	const text = normalizeDashCharacters_(String(rawFilter || ""))
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.trim();
+	if (!text) {
+		return null;
+	}
+
+	if (/(?:^|\s)(?:a\.\s*)?<\s*6\s*months?\b/.test(text) || /\b(?:<\s*6\s*months?|less than\s*6\s*months?|under\s*6\s*months?|<\s*3\s*months?|less than\s*3\s*months?|under\s*3\s*months?)\b/.test(text)) {
+		return ["a. <6 months"];
+	}
+
+	if (/(?:^|\s)(?:b\.\s*)?6\s*-\s*9\s*months?\b/.test(text) || /\b6\s*to\s*9\s*months?\b/.test(text) || /\bbetween\s*6\s*and\s*9\s*months?\b/.test(text)) {
+		return ["b. 6-9 months"];
+	}
+
+	if (/(?:^|\s)(?:c\.\s*)?9\s*-\s*12\s*months?\b/.test(text) || /\b9\s*to\s*12\s*months?\b/.test(text) || /\bbetween\s*9\s*and\s*12\s*months?\b/.test(text)) {
+		return ["c. 9-12 months"];
+	}
+
+	if (/(?:^|\s)(?:d\.\s*)?12\s*-\s*24\s*months?\b/.test(text) || /\b12\s*to\s*24\s*months?\b/.test(text) || /\bbetween\s*12\s*and\s*24\s*months?\b/.test(text)) {
+		return ["d. 12-24 months"];
+	}
+
+	if (/(?:^|\s)(?:e\.\s*)?>\s*24\s*months?\b/.test(text) || /\bhigh[-\s]?risk\b/.test(text) || /\blegacy\b/.test(text) || /\b(?:more than|over|beyond|older than)\s*24\s*months?\b/.test(text)) {
+		return ["e. >24 months"];
+	}
+
+	if (/\bat least\s*1\s*year\b/.test(text) || /\b>=\s*1\s*year\b/.test(text) || /\bmore than\s*1\s*year\b/.test(text) || /\bover\s*1\s*year\b/.test(text) || /\bbeyond\s*1\s*year\b/.test(text) || /\bolder than\s*1\s*year\b/.test(text) || /\bat least\s*12\s*months?\b/.test(text) || /\b>=\s*12\s*months?\b/.test(text) || /\bmore than\s*12\s*months?\b/.test(text) || /\bover\s*12\s*months?\b/.test(text) || /\bbeyond\s*12\s*months?\b/.test(text) || /\bolder than\s*12\s*months?\b/.test(text)) {
+		return ["d. 12-24 months", "e. >24 months"];
+	}
+
+	return null;
+}
+
+function buildPoAgingReply_(poNumber, bucketInfo, intentName) {
+	const boldPo = "<b>PO " + poNumber + "</b>";
+	const bucketLabel = bucketInfo && bucketInfo.label ? bucketInfo.label : "";
+	const bucketCode = bucketInfo && bucketInfo.code ? bucketInfo.code : "";
+
+	if (intentName === "check_po_aging_exceeded") {
+		if (bucketCode === "d" || bucketCode === "e") {
+			return boldPo + " is " + bucketLabel + " old. It has exceeded the standard SLA.";
+		}
+
+		return boldPo + " is " + bucketLabel + " old. It has not yet exceeded the standard SLA.";
+	}
+
+	if (intentName === "check_po_high_risk") {
+		if (bucketCode === "e") {
+			return boldPo + " is >24 months old. It is a high risk legacy PO.";
+		}
+
+		return boldPo + " is " + bucketLabel + " old. It is not yet a high risk PO.";
+	}
+
+	if (bucketCode === "e") {
+		return boldPo + " is >24 months old. It is already a high risk legacy PO.";
+	}
+
+	return boldPo + " is " + bucketLabel + " old.";
+}
+
 function getIntentInfo(userText) {
 	const parsed = parseInput(userText);
 	if (!parsed || !parsed.intent) {
@@ -56,7 +171,7 @@ function getIntentInfo(userText) {
 	};
 }
 
-function getGeminiResponse(userText, messages) {
+function getGeminiResponse(userText) {
 	const CONFIDENCE_THRESHOLD = 0.5;
 	const fallback = "Sorry, I’m not sure I understood that.";
 
@@ -155,47 +270,6 @@ function parseDateValue_(value) {
 	return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function getLatestCommschedSource_() {
-	const linksSheet = getLinksSheet_();
-	const lastRow = linksSheet.getLastRow();
-	if (lastRow < 6) {
-		return null;
-	}
-
-	const dateValues = linksSheet.getRange(6, 1, lastRow - 5, 1).getValues();
-	const linkValues = linksSheet.getRange(6, 2, lastRow - 5, 1).getValues();
-	const richTextValues = linksSheet.getRange(6, 2, lastRow - 5, 1).getRichTextValues();
-
-	let latest = null;
-	for (let i = 0; i < dateValues.length; i += 1) {
-		const rowDate = parseDateValue_(dateValues[i][0]);
-		if (!rowDate) {
-			continue;
-		}
-
-		const linkCell = richTextValues[i][0];
-		let link = linkCell && typeof linkCell.getLinkUrl === "function" ? linkCell.getLinkUrl() : null;
-		if (!link) {
-			const cellValue = linkValues[i][0];
-			link = String(cellValue || "").trim();
-		}
-
-		if (!link) {
-			continue;
-		}
-
-		if (!latest || rowDate.getTime() > latest.date.getTime() || (rowDate.getTime() === latest.date.getTime() && i > latest.index)) {
-			latest = {
-				date: rowDate,
-				link: link,
-				index: i,
-			};
-		}
-	}
-
-	return latest;
-}
-
 function openSpreadsheetFromLink_(link) {
 	const rawLink = String(link || "").trim();
 	if (!rawLink) {
@@ -213,10 +287,6 @@ function openSpreadsheetFromLink_(link) {
 function formatCommschedSheetName_(dateValue, monthFormat) {
 	const month = Utilities.formatDate(dateValue, Session.getScriptTimeZone(), monthFormat || "MMMM").toUpperCase();
 	return month + " COMMSCHED_working file";
-}
-
-function formatCommschedHeaderDate_(dateValue) {
-	return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), "MMMM d");
 }
 
 function findHeaderColumn_(headers, exactHeader) {
@@ -373,19 +443,15 @@ function getSourceFromLinksCell_(cellA1) {
 	};
 }
 
-function getCommschedSheetNameCandidates_(dateValue) {
-	return [
-		formatCommschedSheetName_(dateValue, "MMM"),
-		formatCommschedSheetName_(dateValue, "MMMM"),
-	];
-}
-
 function resolveCommschedSheet_(workbook, sourceInfo) {
 	if (!sourceInfo || !(sourceInfo.date instanceof Date)) {
 		return null;
 	}
 
-	const candidates = getCommschedSheetNameCandidates_(sourceInfo.date);
+	const candidates = [
+		formatCommschedSheetName_(sourceInfo.date, "MMM"),
+		formatCommschedSheetName_(sourceInfo.date, "MMMM"),
+	];
 	return findWorksheetByCandidates_(workbook, candidates, /commsched_working file/i);
 }
 
@@ -499,12 +565,8 @@ function pickSourceFromCandidates_(sources, referenceDate) {
 	return sorted[sorted.length - 1];
 }
 
-function getCommschedSources_() {
-	return getSourcesFromLinksRange_(6, 1, 2);
-}
-
 function getCommschedSource_(options) {
-	return pickSourceFromCandidates_(getCommschedSources_(), options && options.referenceDate);
+	return pickSourceFromCandidates_(getSourcesFromLinksRange_(6, 1, 2), options && options.referenceDate);
 }
 
 function getLatestCommschedSource_() {
@@ -654,11 +716,6 @@ function getDatasetMeta_(datasetKey, requestedFieldKeys, options) {
 	setCachedJson_(cacheKey, meta, spec.cacheTtlSeconds || 900);
 	return meta;
 }
-
-function getCommschedMeta_(requestedFieldKeys, options) {
-	return getDatasetMeta_("COMMSCHED", requestedFieldKeys, options);
-}
-
 function getDatasetRowsByField_(datasetKey, requestedFieldKeys, options) {
 	const meta = getDatasetMeta_(datasetKey, requestedFieldKeys, options);
 	if (!meta) {
@@ -723,26 +780,6 @@ function getCommschedRows_(requestedFieldKeys, options) {
 	return getDatasetRowsByField_("COMMSCHED", requestedFieldKeys, options);
 }
 
-function getRfpMeta_(requestedFieldKeys, options) {
-	return getDatasetMeta_("RFP", requestedFieldKeys, options);
-}
-
-function getGrMeta_(requestedFieldKeys, options) {
-	return getDatasetMeta_("GR", requestedFieldKeys, options);
-}
-
-function getCommschedLookupMeta_(options) {
-	return getCommschedMeta_(["poNumber", "deliveryComplete"], options);
-}
-
-function getCommschedGrLookupMeta_(options) {
-	return getCommschedMeta_(["poNumber", "currency", "goodsReceiptAmount", "grBucket"], options);
-}
-
-function getCommschedRemainingBalanceLookupMeta_(options) {
-	return getCommschedMeta_(["poNumber", "currency", "remainingBalance"], options);
-}
-
 function lookupDatasetRowByField_(datasetKey, lookupFieldKey, lookupValue, requestedFieldKeys, options) {
 	const normalizedRequestedFields = normalizeRequestedFields_(requestedFieldKeys);
 	const meta = getDatasetMeta_(datasetKey, [lookupFieldKey].concat(normalizedRequestedFields), options);
@@ -800,20 +837,8 @@ function lookupDatasetRowByField_(datasetKey, lookupFieldKey, lookupValue, reque
 	};
 }
 
-function lookupCommschedRowByField_(lookupFieldKey, lookupValue, requestedFieldKeys, options) {
-	return lookupDatasetRowByField_("COMMSCHED", lookupFieldKey, lookupValue, requestedFieldKeys, options);
-}
-
 function lookupCommschedPoRow_(poNumber, requestedFieldKeys, options) {
-	return lookupCommschedRowByField_("poNumber", poNumber, requestedFieldKeys, options);
-}
-
-function lookupRfpRowByField_(lookupFieldKey, lookupValue, requestedFieldKeys, options) {
-	return lookupDatasetRowByField_("RFP", lookupFieldKey, lookupValue, requestedFieldKeys, options);
-}
-
-function lookupGrRowByField_(lookupFieldKey, lookupValue, requestedFieldKeys, options) {
-	return lookupDatasetRowByField_("GR", lookupFieldKey, lookupValue, requestedFieldKeys, options);
+	return lookupDatasetRowByField_("COMMSCHED", "poNumber", poNumber, requestedFieldKeys, options);
 }
 
 function findExactMatchRowInColumn_(sheet, columnIndex, dataStartRow, lastRow, targetValue) {
@@ -862,8 +887,4 @@ function findRightmostHeaderColumnByPrefix_(headers, headerPrefix) {
 	}
 
 	return -1;
-}
-
-function findPoRowInColumn_(sheet, poColumn, dataStartRow, lastRow, poNumber) {
-	return findExactMatchRowInColumn_(sheet, poColumn, dataStartRow, lastRow, poNumber);
 }

@@ -31,7 +31,7 @@ function escapeRegExp(text) {
 }
 
 function extractAgeFilterMatches(rawText) {
-	const input = String(rawText || "");
+	const input = String(rawText || "").replace(/[‐‑‒–—―−]/g, "-");
 	const patterns = [
 		/\b(?:a|b|c|d|e)\.\s*(?:<6 months|6-9 months|9-12 months|12-24 months|>24 months)\b/i,
 		/\b(?:<6 months|6-9 months|9-12 months|12-24 months|>24 months)\b/i,
