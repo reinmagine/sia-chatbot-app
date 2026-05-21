@@ -56,44 +56,27 @@
         "GR Tracking & Status Monitoring",
       ];
 
-      const LOGO_FILE_ID = "10AlyHkfuFJm3yUDhK_Oorxb3B_SgYVUb";
-      const LOGO_FILE_URL = `https://drive.google.com/file/d/${LOGO_FILE_ID}/view`;
-      const LOGO_SOURCES = [
-        `https://drive.google.com/uc?export=view&id=${LOGO_FILE_ID}`,
-        `https://drive.google.com/thumbnail?id=${LOGO_FILE_ID}&sz=w256`,
-      ];
+      const LOGO_IMAGE_URL =
+        "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia.png";
 
       function LogoMark() {
-        const [sourceIndex, setSourceIndex] = useState(0);
-        const source = LOGO_SOURCES[sourceIndex] || null;
+        const [hasError, setHasError] = useState(false);
+
+        if (hasError) {
+          return (
+            <div className="block w-12 h-12 shrink-0 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md">
+              S
+            </div>
+          );
+        }
 
         return (
-          <a
-            href={LOGO_FILE_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-12 h-12 shrink-0"
-            aria-label="Open chatbot logo in a new tab"
-            title="Open logo in new tab"
-          >
-            {source ? (
-              <img
-                src={source}
-                alt=""
-                aria-hidden="true"
-                className="w-12 h-12 rounded-xl object-cover shadow-md bg-white"
-                onError={() =>
-                  setSourceIndex((current) =>
-                    current < LOGO_SOURCES.length - 1 ? current + 1 : current,
-                  )
-                }
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl shadow-md">
-                S
-              </div>
-            )}
-          </a>
+          <img
+            src={LOGO_IMAGE_URL}
+            alt="SIA logo"
+            className="block w-12 h-12 shrink-0 rounded-xl object-cover shadow-md bg-white"
+            onError={() => setHasError(true)}
+          />
         );
       }
 
