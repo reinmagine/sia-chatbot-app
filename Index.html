@@ -406,10 +406,8 @@
 
         // Welcome message trigger
         useEffect(() => {
-          if (
-            messages.length === 0 &&
-            !localStorage.getItem("sia_chat")
-          ) {
+          if (!hasStarted) return;
+          if (messages.length === 0 && !localStorage.getItem("sia_chat")) {
             setMessages([
               {
                 id: "bot-" + Date.now(),
@@ -427,7 +425,7 @@
               },
             ]);
           }
-        }, []);
+        }, [hasStarted, messages.length]);
 
         // Auto-scroll inside chat
         const scrollToBottom = () => {
@@ -635,63 +633,6 @@
               )}
             </header>
 
-            {/* Messages Body */}
-            <main
-              className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 flex flex-col gap-5"
-              aria-live="polite"
-            >
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex w-full items-end ${m.who === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  {m.who !== "user" && (
-                    <img
-                      src={EXPRESSIONS[m.expression] || EXPRESSIONS.neutral}
-                      alt="SIA"
-                      className="w-10 h-10 rounded-xl mr-2 object-cover border border-gray-100 shadow-sm bg-white shrink-0"
-                      onError={(e) => { e.target.src = LOGO_IMAGE_URL; }}
-                    />
-                  )}
-                  <div
-                    className={`max-w-[85%] md:max-w-[75%] text-[15px] shadow-sm flex flex-col ${m.who === "user" ? "bg-indigo-50 text-indigo-900 rounded-2xl rounded-br-sm px-4 py-3" : m.suggestions ? "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-sm overflow-hidden p-6 shadow-md" : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-sm overflow-hidden px-4 py-3"}`}
-                  >
-                    <MessageContent 
-                      text={m.text} 
-                      suggestions={m.suggestions} 
-                      onSelectSuggestion={(label) => handleSend(label)} 
-                    />
-                  </div>
-                </div>
-              ))}
-
-              {isTyping && (
-                <div className="flex justify-start items-end">
-                  <img
-                    src={EXPRESSIONS.thinking}
-                    alt="SIA thinking"
-                    className="w-10 h-10 rounded-xl mr-2 object-cover border border-gray-100 shadow-sm bg-white shrink-0"
-                    onError={(e) => { e.target.src = LOGO_IMAGE_URL; }}
-                  />
-                  <div className="flex items-center gap-1.5 bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-bl-sm text-sm shadow-sm">
-                    <span
-                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "0s" }}
-                    ></span>
-                    <span
-                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "0.15s" }}
-                    ></span>
-                    <span
-                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
-                      style={{ animationDelay: "0.3s" }}
-                    ></span>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </main>
-
             {!hasStarted ? (
               <div className="p-6 md:p-10 bg-white border-t shrink-0 flex flex-col items-center justify-center gap-8 min-h-[400px]">
                 <div className="w-full max-w-sm bg-slate-50 rounded-[32px] p-8 border border-slate-100 shadow-sm">
@@ -711,6 +652,63 @@
               </div>
             ) : (
               <React.Fragment>
+                {/* Messages Body */}
+                <main
+                  className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 flex flex-col gap-5"
+                  aria-live="polite"
+                >
+                  {messages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`flex w-full items-end ${m.who === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      {m.who !== "user" && (
+                        <img
+                          src={EXPRESSIONS[m.expression] || EXPRESSIONS.neutral}
+                          alt="SIA"
+                          className="w-10 h-10 rounded-xl mr-2 object-cover border border-gray-100 shadow-sm bg-white shrink-0"
+                          onError={(e) => { e.target.src = LOGO_IMAGE_URL; }}
+                        />
+                      )}
+                      <div
+                        className={`max-w-[85%] md:max-w-[75%] text-[15px] shadow-sm flex flex-col ${m.who === "user" ? "bg-indigo-50 text-indigo-900 rounded-2xl rounded-br-sm px-4 py-3" : m.suggestions ? "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-sm overflow-hidden p-6 shadow-md" : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-bl-sm overflow-hidden px-4 py-3"}`}
+                      >
+                        <MessageContent 
+                          text={m.text} 
+                          suggestions={m.suggestions} 
+                          onSelectSuggestion={(label) => handleSend(label)} 
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {isTyping && (
+                    <div className="flex justify-start items-end">
+                      <img
+                        src={EXPRESSIONS.thinking}
+                        alt="SIA thinking"
+                        className="w-10 h-10 rounded-xl mr-2 object-cover border border-gray-100 shadow-sm bg-white shrink-0"
+                        onError={(e) => { e.target.src = LOGO_IMAGE_URL; }}
+                      />
+                      <div className="flex items-center gap-1.5 bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-bl-sm text-sm shadow-sm">
+                        <span
+                          className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0s" }}
+                        ></span>
+                        <span
+                          className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.15s" }}
+                        ></span>
+                        <span
+                          className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.3s" }}
+                        ></span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </main>
+
                 {/* Persistent Menu */}
                 <div className="pt-3 pb-2 px-3 md:px-6 border-t bg-slate-50 flex gap-2 flex-nowrap overflow-x-auto whitespace-nowrap shrink-0 snap-x">
                   <div className="text-[11px] font-bold text-gray-400 flex items-center px-1 uppercase tracking-widest shrink-0 select-none">
