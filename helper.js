@@ -15,6 +15,7 @@ function showDidYouMean(suggestions) { // run this if confidence is < 0.9
 
 function getMissingEntityMessage(entityKey) {
 	const prompts = {
+		VENDOR: "Please provide a vendor name",
 		PO_NUMBER: "Please provide a 10-digit PO number",
 		DATE: "Please provide a date (MM/DD/YYYY)",
 		YEAR: "Please provide a year",
@@ -702,6 +703,9 @@ function getGeminiResponse(userText, options) {
 		checkPoTotalValue: checkPoTotalValue,
 		checkPoAging: checkPoAging,
 		listPoAging: listPoAging,
+		listPoVendor: listPoVendor,
+		listPoVendorRemainingBalance: listPoVendorRemainingBalance,
+		listVendorRemainingBalance: listVendorRemainingBalance,
 	};
 
 	const handler = handlers[intent.handler];
@@ -811,6 +815,10 @@ function findHeaderColumn_(headers, exactHeader) {
 
 function normalizeHeaderText_(value) {
 	return String(value || "")
+		// normalize non-breaking and other odd space characters to regular space
+		.replace(/\u00A0/g, " ")
+		// normalize fancy apostrophes/quotes to straight apostrophe
+		.replace(/[\u2018\u2019\u201A\u201B\u2032\u2035`’‘]/g, "'")
 		.replace(/\s+/g, " ")
 		.trim()
 		.toLowerCase();
@@ -1022,6 +1030,7 @@ const DATASET_SPECS = {
 		dataStartRow: 4,
 		cacheTtlSeconds: 900,
 		fields: {
+			vendor: { match: "exact", value: "Vendor’s Name" },
 			division: { match: "exact", value: "Division" },
 			poNumber: { match: "exact", value: "PO Number" },
 			poDate: { match: "exact", value: "PO Date" },
@@ -1031,10 +1040,12 @@ const DATASET_SPECS = {
 			deliveryComplete: { match: "rightmostPrefix", value: "DELIV COMPLETE?" },
 			latestGrDate: { match: "rightmostPrefix", value: "Latest GR Date as of" },
 			goodsReceiptAmount: { match: "rightmostPrefix", value: "Goods Receipt (as of" },
+			ungrdUsd: { match: "rightmostPrefix", value: "unGRd in USD (as of" },
 			grBucket: { match: "rightmostPrefix", value: "GR% Bucketing as of" },
 			remainingBalance: { match: "rightmostPrefix", value: "To be GRed (PO Amount - GR) (as of" },
 		},
 		fieldPropertyNames: {
+			vendor: "vendorColumn",
 			division: "divisionColumn",
 			poNumber: "poColumn",
 			poDate: "poDateColumn",
@@ -1044,6 +1055,7 @@ const DATASET_SPECS = {
 			deliveryComplete: "delivColumn",
 			latestGrDate: "latestGrDateColumn",
 			goodsReceiptAmount: "grAmountColumn",
+			ungrdUsd: "ungrdUsdColumn",
 			grBucket: "grColumn",
 			remainingBalance: "remainingBalanceColumn",
 		},

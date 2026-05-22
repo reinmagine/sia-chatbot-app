@@ -244,3 +244,188 @@ function listPoAging(entities, parsed, context) {
 
 	return lines.join("\n");
 }
+
+function listPoVendor(entities, parsed, context) {
+	const rawVendor = String(entities.VENDOR || "").trim();
+	if (!rawVendor) {
+		return getMissingEntityMessage("VENDOR");
+	}
+
+	const dataset = getCommschedRows_(["poNumber", "vendor"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest COMMSCHED sheet.";
+	}
+
+	// Collect unique vendor names
+	const vendorSet = {};
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		if (vendorName) vendorSet[vendorName] = true;
+	}
+
+	const vendorList = Object.keys(vendorSet);
+	const queryNorm = normalizeText(rawVendor || "");
+
+	function scoreCandidate(candidate) {
+		const candidateNorm = normalizeText(candidate || "");
+		if (!candidateNorm) return 0;
+		if (candidateNorm === queryNorm) return 1;
+		const tokensA = tokenize(queryNorm);
+		const tokensB = tokenize(candidateNorm);
+		const jaccard = jaccardSimilarity(tokensA, tokensB);
+		const levenshtein = normalizedLevenshteinSimilarity(queryNorm, candidateNorm);
+		return jaccard * 0.6 + levenshtein * 0.4;
+	}
+
+	const scored = vendorList.map(function(v) { return {vendor: v, score: scoreCandidate(v)}; });
+	scored.sort(function(a,b){ return b.score - a.score; });
+
+	const top = scored.slice(0, 3);
+	if (top.length === 0) return "No matching vendors found.";
+
+	// If best candidate is a high-confidence match, list its POs directly
+	if (top[0].score >= 0.9) {
+		const chosen = top[0].vendor;
+		const matches = [];
+		for (let i = 0; i < dataset.rows.length; i += 1) {
+			const row = dataset.rows[i] || {};
+			const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+			const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+			if (!poNumber) continue;
+			if (vendorName === chosen) {
+				matches.push({poNumber: poNumber, vendor: vendorName});
+			}
+		}
+
+		if (matches.length === 0) return "No matching POs found.";
+
+		if (matches.length > 10) {
+			const headers = ["PO Number", "Vendor"];
+			const csvRows = matches.map(function(m) { return [m.poNumber, m.vendor]; });
+			const csvContent = buildCsvContent_(headers, csvRows);
+			const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+			return {
+				text: "Your spreadsheet is ready!",
+				download: {
+					filename: "sia-response-" + timestamp + ".csv",
+					content: csvContent,
+					mimeType: "text/csv",
+				},
+			};
+		}
+
+		const lines = [
+			"| PO Number | Vendor |",
+			"| --- | --- |",
+		];
+		for (let i = 0; i < matches.length; i += 1) {
+			const m = matches[i];
+			lines.push("| " + m.poNumber + " | " + m.vendor + " |");
+		}
+		return lines.join("\n");
+	}
+
+	// Otherwise present top candidates using existing suggestion format
+	const suggestions = top.map(function(t) { return { id: t.vendor, label: t.vendor }; });
+	return showDidYouMean(suggestions);
+}
+
+function listPoVendorRemainingBalance(entities, parsed, context) {
+	const dataset = getCommschedRows_(["poNumber", "vendor", "ungrdUsd"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest COMMSCHED sheet.";
+	}
+
+	const rows = [];
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		let balanceRaw = String(row.values && row.values.ungrdUsd ? row.values.ungrdUsd : "").trim();
+		if (!poNumber || !balanceRaw) continue;
+		// remove commas and other non-numeric except dot and minus
+		const numeric = parseFloat(balanceRaw.replace(/[^0-9.\-]/g, ""));
+		if (isNaN(numeric)) continue;
+		rows.push({ poNumber: poNumber, vendor: vendorName, balance: numeric });
+	}
+
+	if (rows.length === 0) return "No matching POs found.";
+
+	rows.sort(function(a,b){ return b.balance - a.balance; });
+	const top10 = rows.slice(0, 10);
+
+	function formatMoney(n) {
+		const fixed = Number(n || 0).toFixed(2);
+		const parts = fixed.split('.');
+		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+		return parts.join('.');
+	}
+
+	const lines = [
+		"| PO Number | Vendor | Remaining Balance |",
+		"| --- | --- | ---: |",
+	];
+	for (let i = 0; i < top10.length; i += 1) {
+		const r = top10[i];
+		lines.push("| " + r.poNumber + " | " + r.vendor + " | USD " + formatMoney(r.balance) + " |");
+	}
+
+	return lines.join("\n");
+}
+
+function listVendorRemainingBalance(entities, parsed, context) {
+	const dataset = getCommschedRows_(["vendor", "ungrdUsd"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest COMMSCHED sheet.";
+	}
+
+	const vendorTotals = {};
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		const balanceRaw = String(row.values && row.values.ungrdUsd ? row.values.ungrdUsd : "").trim();
+		if (!vendorName || !balanceRaw) {
+			continue;
+		}
+
+		const numeric = parseFloat(balanceRaw.replace(/[^0-9.\-]/g, ""));
+		if (isNaN(numeric)) {
+			continue;
+		}
+
+		vendorTotals[vendorName] = (vendorTotals[vendorName] || 0) + numeric;
+	}
+
+	const totals = Object.keys(vendorTotals).map(function(vendor) {
+		return { vendor: vendor, balance: vendorTotals[vendor] };
+	});
+
+	if (totals.length === 0) {
+		return "No matching vendors found.";
+	}
+
+	totals.sort(function(a, b) {
+		return b.balance - a.balance;
+	});
+
+	function formatMoney(n) {
+		const fixed = Number(n || 0).toFixed(2);
+		const parts = fixed.split('.');
+		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+		return parts.join('.');
+	}
+
+	const top10 = totals.slice(0, 10);
+	const lines = [
+		"| Vendor | Remaining Balance |",
+		"| --- | ---: |",
+	];
+
+	for (let i = 0; i < top10.length; i += 1) {
+		const item = top10[i];
+		lines.push("| " + item.vendor + " | USD " + formatMoney(item.balance) + " |");
+	}
+
+	return lines.join("\n");
+}

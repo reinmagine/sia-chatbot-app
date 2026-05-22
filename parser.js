@@ -120,6 +120,13 @@ function normalizedLevenshteinSimilarity(a, b) {
 function extractEntitiesFromText(userText) {
 	const rawText = String(userText || "");
 	const poMatches = rawText.match(/\b\d{10}\b/g) || [];
+	// vendor capture: phrases like "from huawei" or "for nokia"
+	const vendorMatches = [];
+	const vendorRegex = /\b(?:from|for)\s+([A-Za-z0-9&.,'()\-\/\s]{2,60})/i;
+	const vendorM = rawText.match(vendorRegex);
+	if (vendorM && vendorM[1]) {
+		vendorMatches.push(String(vendorM[1]).trim());
+	}
 	const dateMatches =
 		rawText.match(/\b(?:0?[1-9]|1[0-2])[\/](?:0?[1-9]|[12]\d|3[01])[\/](?:19|20)\d{2}\b/g) ||
 		rawText.match(/\b(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\d|3[01])-(?:19|20)\d{2}\b/g) ||
@@ -129,6 +136,7 @@ function extractEntitiesFromText(userText) {
 
 	return {
 		PO_NUMBER: poMatches,
+		VENDOR: vendorMatches,
 		DATE: dateMatches,
 		YEAR: yearMatches,
 		AGE_FILTER: ageFilterMatches,
@@ -155,6 +163,7 @@ function replaceEntityValuesForMatching(normalizedText, entityMatches) {
 	(entityMatches.DATE || []).forEach((value) => replaceMatch("DATE", value));
 	(entityMatches.AGE_FILTER || []).forEach((value) => replaceMatch("AGE_FILTER", value));
 	(entityMatches.PO_NUMBER || []).forEach((value) => replaceMatch("PO_NUMBER", value));
+	(entityMatches.VENDOR || []).forEach((value) => replaceMatch("VENDOR", value));
 	(entityMatches.YEAR || []).forEach((value) => replaceMatch("YEAR", value));
 
 	return output;

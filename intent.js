@@ -153,5 +153,43 @@ const INTENTS = [
 		responseType: "list",
 		handler: "listPoAging"
 	},
+	{
+		name: "list_po_vendor",
+		phrases: [
+			"List all POs from X",
+			"Show me all pos from X",
+			"List POs from X",
+			"List all POs from {vendor}",
+			"show me all pos from nokia",
+			"list all pos from huawei",
+		],
+		requiredEntities: ["VENDOR"],
+		responseType: "list",
+		handler: "listPoVendor"
+	},
+	{
+		name: "list_po_vendor_remaining_balance",
+		phrases: [
+			"List all POs with highest remaining balance",
+			"Which PO have the highest unGR'd balance",
+			"show me the POs with highest unGRd balance",
+			"List top POs with highest unGR'd balance",
+			"Which POs have the highest remaining balance",
+		],
+		responseType: "list",
+		handler: "listPoVendorRemainingBalance"
+	},
+	{
+		name: "list_vendor_remaining_balance",
+		phrases: [
+			"show me top vendors by remaining balance",
+			"list top vendors by remaining balance",
+			"which vendors have the highest remaining balance",
+			"top vendors by remaining balance",
+			"list all vendors with the highest balances"
+		],
+		responseType: "list",
+		handler: "listVendorRemainingBalance"
+	},
 
 ];
