@@ -30,9 +30,32 @@
           Arial,
           sans-serif;
       }
+
+      @keyframes siaRollIn {
+        0% {
+          transform: translateY(110%);
+          opacity: 0;
+        }
+        35% {
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .sia-roll-text {
+        display: inline-block;
+        animation: siaRollIn 0.45s ease-out;
+        will-change: transform, opacity;
+      }
     </style>
   </head>
   <body class="bg-gray-100 m-0 p-0 h-[100dvh] flex flex-col">
+    <script id="user-context-data" type="application/json">
+      <?!= userContextJson ?>
+    </script>
     <div
       id="root"
       class="h-full w-full max-w-4xl mx-auto flex flex-col bg-white shadow-xl overflow-hidden"
@@ -40,6 +63,35 @@
 
     <script type="text/babel">
       const { useState, useEffect, useRef } = React;
+      const USER_CONTEXT = JSON.parse(document.getElementById("user-context-data")?.textContent || "{}");
+
+      const USER_EMAIL = String(USER_CONTEXT.email || "").trim();
+      const USER_FIRST_NAME = String(USER_CONTEXT.firstName || "").trim();
+      const USER_DIVISION = String(USER_CONTEXT.divisionDisplay || "").trim();
+      const USER_ACCESS_ALLOWED = USER_CONTEXT.accessAllowed !== false;
+      const HEADER_BASE_TEXT = String(USER_CONTEXT.headerBaseText || "Status & Insights Assistant");
+      const HEADER_DENIED_TEXT = String(USER_CONTEXT.headerDeniedText || "Please contact an admin to use the chatbot.");
+      const ACCESS_DENIED_REPLY = String(USER_CONTEXT.accessDeniedMessage || "You do not have access to this chatbot, please contact an admin.");
+
+      const storageSuffix = String(USER_CONTEXT.email || "guest")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_") || "guest";
+      const CHAT_STORAGE_KEY = `sia_chat_${storageSuffix}`;
+      const STARTED_STORAGE_KEY = `sia_started_${storageSuffix}`;
+
+      const formatDivisionSubtitle = (division) => {
+        const cleanDivision = String(division || "").trim();
+        if (!cleanDivision) return HEADER_BASE_TEXT;
+        if (/division$/i.test(cleanDivision)) {
+          return `for ${cleanDivision}`;
+        }
+        return `for ${cleanDivision} Division`;
+      };
+
+      const formatSiaGreeting = (firstName, intro = "Hi") => {
+        const cleanFirstName = String(firstName || "").trim();
+        return cleanFirstName ? `${intro} ${cleanFirstName}! I'm SIA` : `Hi! I'm SIA`;
+      };
 
       const QUICK = [
         "Shipping",
@@ -154,8 +206,8 @@
         const slides = [
           {
             icon: "👋🏻",
-            title: "Hi, I'm SIA!",
-            desc: "Your Status & Insights Assistant. I can help you track POs, check GR status, and more.",
+            title: formatSiaGreeting(USER_FIRST_NAME),
+            desc: `Your Status & Insights Assistant.`,
           },
           {
             icon: "🔍",
@@ -196,6 +248,41 @@
             >
               {step < slides.length - 1 ? "Next" : "Start Chatting"}
             </button>
+          </div>
+        );
+      }
+
+      function RollingSubtitle() {
+        const [showDivision, setShowDivision] = useState(false);
+        const hasDivisionRoll = USER_ACCESS_ALLOWED && Boolean(USER_DIVISION);
+
+        useEffect(() => {
+          if (!hasDivisionRoll) {
+            setShowDivision(false);
+            return undefined;
+          }
+
+          const timer = setInterval(() => {
+            setShowDivision((prev) => !prev);
+          }, 5000);
+
+          return () => clearInterval(timer);
+        }, [hasDivisionRoll]);
+
+        const subtitleText = !USER_ACCESS_ALLOWED
+          ? HEADER_DENIED_TEXT
+          : hasDivisionRoll && showDivision
+            ? formatDivisionSubtitle(USER_DIVISION)
+            : HEADER_BASE_TEXT;
+
+        return (
+          <div className="overflow-hidden h-[1.1rem] leading-none">
+            <span
+              key={subtitleText}
+              className={`sia-roll-text text-[11px] font-medium uppercase tracking-wider mt-0.5 ${USER_ACCESS_ALLOWED ? "text-gray-400" : "text-amber-600"}`}
+            >
+              {subtitleText}
+            </span>
           </div>
         );
       }
@@ -421,17 +508,28 @@
 
         // Load saved chat from local storage
         useEffect(() => {
-          if (localStorage.getItem("sia_started")) {
+          if (localStorage.getItem(STARTED_STORAGE_KEY)) {
             setHasStarted(true);
           }
           try {
-            const s = localStorage.getItem("sia_chat");
+            const s = localStorage.getItem(CHAT_STORAGE_KEY);
             if (s) {
               const parsed = JSON.parse(s);
               // Handle legacy { messages: [] } object from previous version
-              setMessages(
-                Array.isArray(parsed) ? parsed : parsed.messages || [],
-              );
+              const restoredMessages = Array.isArray(parsed) ? parsed : parsed.messages || [];
+              if (!USER_ACCESS_ALLOWED) {
+                setMessages([
+                  {
+                    id: "bot-" + Date.now(),
+                    who: "bot",
+                    text: ACCESS_DENIED_REPLY,
+                    expression: "concerned",
+                    ts: new Date().toISOString(),
+                  },
+                ]);
+              } else {
+                setMessages(restoredMessages);
+              }
             }
           } catch (e) {}
         }, []);
@@ -439,19 +537,32 @@
         // Save chat back to storage on updates
         useEffect(() => {
           if (messages.length > 0) {
-            localStorage.setItem("sia_chat", JSON.stringify(messages));
+            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
           }
         }, [messages]);
 
         // Welcome message trigger
         useEffect(() => {
           if (!hasStarted) return;
-          if (messages.length === 0 && !localStorage.getItem("sia_chat")) {
+          if (messages.length === 0 && !localStorage.getItem(CHAT_STORAGE_KEY)) {
+            if (!USER_ACCESS_ALLOWED) {
+              setMessages([
+                {
+                  id: "bot-" + Date.now(),
+                  who: "bot",
+                  text: ACCESS_DENIED_REPLY,
+                  expression: "concerned",
+                  ts: new Date().toISOString(),
+                },
+              ]);
+              return;
+            }
+
             setMessages([
               {
                 id: "bot-" + Date.now(),
                 who: "bot",
-                text: "Hi! I'm SIA, your Status & Insights Assistant. How can I help today?",
+                text: `${formatSiaGreeting(USER_FIRST_NAME)}, your Status & Insights Assistant. How can I help today?`,
                 expression: "excited",
                 ts: new Date().toISOString(),
               },
@@ -475,45 +586,30 @@
           scrollToBottom();
         }, [messages, isTyping]);
 
-        // Built-in responses
-        const botRespondFor = (text) => {
-          const t = String(text).toLowerCase();
-          if (t.includes("shipping"))
-            return "Please provide your order number so I can check shipping status.";
-          if (t.includes("tracking"))
-            return 'Enter the tracking number or choose "Check order status".';
-          if (t.includes("returns"))
-            return "To start a return, select the order and item. Do you want steps or to create a return request?";
-          if (t.includes("ordering"))
-            return "What would you like to order? I can suggest products or check availability.";
-          if (
-            t.includes("po") ||
-            t.includes("gr") ||
-            t.includes("general po status")
-          ) {
-            return "Here is the recent PO status overview:\n\n| PO Number | Vendor | Status | Amount |\n| --- | --- | --- | --- |\n| PO450001 | Acme Corp | Released | $5,000 |\n| PO450002 | Globex | GR Partial | $12,400 |\n| PO450003 | Initech | Pending | $890 |";
-          }
-          if (/^\s*(hi|hello|hey)\b/.test(t))
-            return "Hi! I can help with Shipping, Tracking, Returns, Ordering, PO / GR Status. Try one of the quick replies below.";
-          return "Thanks — I forwarded your request. What would you like to do next? Try 'Shipping' or 'PO / GR Status'.";
-        };
+        // Built-in placeholder responder removed.
+        // We intentionally do not return canned fallback messages here.
+        // When no server is available, sendToServer will resolve to null
+        // and the UI will not insert placeholder bot replies.
+        const botRespondFor = (text) => null;
 
         // Hook for Apps Script if deployed there
-        const sendToServer = (text) => {
+        // Do not fall back to canned placeholder replies when offline.
+        const sendToServer = (text, triggerSource = "query") => {
           return new Promise((resolve) => {
             if (window.google && google.script && google.script.run) {
               try {
                 google.script.run
                   .withSuccessHandler(resolve)
-                  .withFailureHandler(() => resolve(botRespondFor(text)))
-                  .getGeminiResponse(text, messages);
+                  .withFailureHandler(() => resolve(null))
+                  .getGeminiResponse(text, { triggerSource });
                 return;
               } catch (e) {
-                resolve(botRespondFor(text));
+                resolve(null);
                 return;
               }
             }
-            resolve(botRespondFor(text));
+            // No server available — do not return placeholder responses.
+            resolve(null);
           });
         };
 
@@ -549,7 +645,7 @@
           );
         };
 
-        const handleSend = async (text) => {
+        const handleSend = async (text, triggerSource = "query") => {
           const raw = String(text || "").trim();
           if (!raw) return;
           const startedAt = Date.now();
@@ -570,15 +666,17 @@
           setIsTyping(true);
 
           let shouldShowWait = false;
-          try {
-            const intentInfo = await getIntentInfo(raw);
-            if (intentInfo && intentInfo.isList && intentInfo.hasRequiredEntities) {
-              shouldShowWait = true;
-            } else if (!intentInfo) {
+          if (USER_ACCESS_ALLOWED) {
+            try {
+              const intentInfo = await getIntentInfo(raw);
+              if (intentInfo && intentInfo.isList && intentInfo.hasRequiredEntities) {
+                shouldShowWait = true;
+              } else if (!intentInfo) {
+                shouldShowWait = isLikelyListQuery(raw);
+              }
+            } catch (e) {
               shouldShowWait = isLikelyListQuery(raw);
             }
-          } catch (e) {
-            shouldShowWait = isLikelyListQuery(raw);
           }
 
           if (shouldShowWait) {
@@ -593,24 +691,25 @@
             ]);
           }
 
-          const delay = 400 + Math.random() * 900;
+          const delay = USER_ACCESS_ALLOWED ? 400 + Math.random() * 900 : 0;
           await new Promise((r) => setTimeout(r, delay));
 
           try {
-            const resp = await sendToServer(raw);
-            const isStructuredResponse =
-              resp && typeof resp === "object" && !Array.isArray(resp);
-            const textVal = isStructuredResponse
-              ? String(resp.text || "")
-              : String(resp || "");
-            const elapsedSeconds = Math.max(
-              1,
-              Math.round((Date.now() - startedAt) / 1000),
-            );
-            const responseText =
-              isStructuredResponse && resp.download
-                ? `${textVal.trim()} (Generated in ${elapsedSeconds}s)`
-                : textVal;
+            const resp = await sendToServer(raw, triggerSource);
+
+            // Remove any interim 'Please wait' bot-wait messages we may have added
+            setMessages((prev) => prev.filter((m) => !(m.id && String(m.id).startsWith("bot-wait-"))));
+
+            // If no response (offline / no server), do not insert placeholder replies
+            if (resp === null || resp === undefined || String(resp).trim() === "") {
+              setIsTyping(false);
+              return;
+            }
+
+            const isStructuredResponse = resp && typeof resp === "object" && !Array.isArray(resp);
+            const textVal = isStructuredResponse ? String(resp.text || "") : String(resp || "");
+            const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+            const responseText = isStructuredResponse && resp.download ? `${textVal.trim()} (Generated in ${elapsedSeconds}s)` : textVal;
             setMessages((prev) => [
               ...prev,
               {
@@ -618,10 +717,7 @@
                 who: "bot",
                 text: responseText,
                 expression: isStructuredResponse && resp.expression ? resp.expression : guessExpression(textVal),
-                suggestions:
-                  isStructuredResponse && Array.isArray(resp.suggestions)
-                    ? resp.suggestions
-                    : undefined,
+                suggestions: isStructuredResponse && Array.isArray(resp.suggestions) ? resp.suggestions : undefined,
                 download: isStructuredResponse && resp.download ? resp.download : undefined,
                 ts: new Date().toISOString(),
               },
@@ -644,18 +740,17 @@
         const onKeyDown = (e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            handleSend(inputValue);
+            handleSend(inputValue, "query");
           }
         };
 
         const handleGetStarted = () => {
-          setHasStarted(true);
-          localStorage.setItem("sia_started", "true");
+          finishTutorial();
         };
 
         const finishTutorial = () => {
           setHasStarted(true);
-          localStorage.setItem("sia_started", "true");
+          localStorage.setItem(STARTED_STORAGE_KEY, "true");
         };
 
         const handleResetChat = () => {
@@ -663,8 +758,8 @@
         };
 
         const confirmReset = () => {
-          localStorage.removeItem("sia_chat");
-          localStorage.removeItem("sia_started");
+          localStorage.removeItem(CHAT_STORAGE_KEY);
+          localStorage.removeItem(STARTED_STORAGE_KEY);
           setMessages([]);
           setHasStarted(false);
           setShowResetConfirm(false);
@@ -710,9 +805,7 @@
                   <div className="font-bold text-indigo-800 text-lg leading-tight tracking-wide">
                     SIA
                   </div>
-                  <div className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mt-0.5">
-                    Status &amp; Insights Assistant
-                  </div>
+                  <RollingSubtitle />
                 </div>
               </div>
               {hasStarted && (
@@ -784,7 +877,7 @@
                           text={m.text} 
                           suggestions={m.suggestions} 
                           download={m.download}
-                          onSelectSuggestion={(label) => handleSend(label)} 
+                          onSelectSuggestion={(label) => handleSend(label, "menu")} 
                         />
                       </div>
                     </div>
@@ -817,6 +910,23 @@
                   <div ref={messagesEndRef} />
                 </main>
 
+                {/* Quick Replies */}
+                <div className="pt-3 pb-2 px-3 md:px-6 border-t bg-slate-50 flex gap-2 flex-nowrap overflow-x-auto whitespace-nowrap shrink-0 snap-x">
+                  <div className="text-[11px] font-bold text-gray-400 flex items-center px-1 uppercase tracking-widest shrink-0 select-none">
+                    Quick Replies
+                  </div>
+                  {QUICK.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => handleSend(label, "menu")}
+                      className="snap-start text-[13px] px-3.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-100 transition-all font-medium whitespace-nowrap shrink-0 shadow-sm"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Persistent Menu */}
                 <div className="pt-3 pb-2 px-3 md:px-6 border-t bg-slate-50 flex gap-2 flex-nowrap overflow-x-auto whitespace-nowrap shrink-0 snap-x">
                   <div className="text-[11px] font-bold text-gray-400 flex items-center px-1 uppercase tracking-widest shrink-0 select-none">
@@ -826,7 +936,7 @@
                     <button
                       key={label}
                       type="button"
-                      onClick={() => handleSend(label)}
+                      onClick={() => handleSend(label, "menu")}
                       className="snap-start text-[13px] px-3.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-100 transition-all font-medium whitespace-nowrap shrink-0 shadow-sm"
                     >
                       {label}
@@ -839,7 +949,7 @@
                   className="p-4 md:px-6 md:pb-5 border-t bg-white flex gap-3 items-end shrink-0"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleSend(inputValue);
+                    handleSend(inputValue, "query");
                   }}
                 >
                   <textarea
@@ -848,7 +958,7 @@
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={onKeyDown}
-                    placeholder="Type a message..."
+                    placeholder={USER_ACCESS_ALLOWED ? "Type a message..." : "Please contact an admin to use the chatbot."}
                     className="flex-1 resize-none border border-gray-300 rounded-2xl px-4 py-3.5 text-[15px] focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-sm transition-all max-h-32 overflow-y-auto w-full"
                     aria-label="Message input"
                   ></textarea>

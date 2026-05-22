@@ -5,13 +5,16 @@
 - ex: checkPoStatus, checkPoGrStatus, checkPoRemainingBalance, checkPoLatestGrDate, checkPoTotalValue, checkPoAging, listPoAging
 
 */
-function checkPoStatus(entities) { // done
+function checkPoStatus(entities, parsed, context) { // done
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
 
-	const lookup = lookupCommschedPoRow_(poNumber, ["deliveryComplete"]);
+	const lookup = lookupCommschedPoRow_(poNumber, ["deliveryComplete"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
 	if (!lookup || !lookup.found) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
@@ -28,13 +31,16 @@ function checkPoStatus(entities) { // done
 	return getCommschedNoDataMessage_(poNumber);
 }
 
-function checkPoGrStatus(entities) { // done
+function checkPoGrStatus(entities, parsed, context) { // done
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
 
-	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "goodsReceiptAmount", "grBucket"]);
+	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "goodsReceiptAmount", "grBucket"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
 	if (!lookup || !lookup.found) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
@@ -57,13 +63,16 @@ function checkPoGrStatus(entities) { // done
 	return bucketReplies[grValue] || getCommschedNoDataMessage_(poNumber);
 }
 
-function checkPoRemainingBalance(entities) { // done
+function checkPoRemainingBalance(entities, parsed, context) { // done
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
 
-	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "remainingBalance"]);
+	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "remainingBalance"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
 	if (!lookup || !lookup.found) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
@@ -78,13 +87,16 @@ function checkPoRemainingBalance(entities) { // done
 	return "<b>PO " + poNumber + "</b> has a remaining balance of " + currencyValue + " " + remainingBalanceValue + ".";
 }
 
-function checkPoTotalValue(entities) { // done
+function checkPoTotalValue(entities, parsed, context) { // done
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
 
-	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "poAmount", "goodsReceiptAmount"]);
+	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "poAmount", "goodsReceiptAmount"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
 	if (!lookup || !lookup.found) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
@@ -100,13 +112,16 @@ function checkPoTotalValue(entities) { // done
 	return "<b>PO " + poNumber + "</b> has a total value of " + currencyValue + " " + poAmountValue + " and GR value of " + currencyValue + " " + grAmountValue + ".";
 }
 
-function checkPoLatestGrDate(entities) {
+function checkPoLatestGrDate(entities, parsed, context) {
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {
 		return "Cannot find <b>PO X</b> in latest COMMSCHED sheet.";
 	}
 
-	const lookup = lookupCommschedPoRow_(poNumber, ["latestGrDate"]);
+	const lookup = lookupCommschedPoRow_(poNumber, ["latestGrDate"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
 	if (!lookup || !lookup.found) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
@@ -125,13 +140,16 @@ function checkPoLatestGrDate(entities) {
 	return "The last GR for <b>PO " + poNumber + "</b> was posted on " + formattedDate + ".";
 }
 
-function checkPoAging(entities, parsed) {
+function checkPoAging(entities, parsed, context) {
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
 
-	const lookup = lookupCommschedPoRow_(poNumber, ["poSla"]);
+	const lookup = lookupCommschedPoRow_(poNumber, ["poSla"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
 	if (!lookup || !lookup.found) {
 		return getCommschedNotFoundMessage_(poNumber);
 	}
@@ -150,14 +168,14 @@ function checkPoAging(entities, parsed) {
 	return buildPoAgingReply_(poNumber, bucketInfo, intentName);
 }
 
-function listPoAging(entities) {
+function listPoAging(entities, parsed, context) {
 	const rawAgeFilter = String(entities.AGE_FILTER || "").trim();
 	const allowedBuckets = resolvePoSlaBucketCellsForFilter_(rawAgeFilter);
 	if (!allowedBuckets || allowedBuckets.length === 0) {
 		return getMissingEntityMessage("AGE_FILTER");
 	}
 
-	const dataset = getCommschedRows_(["poNumber", "poSla"]);
+	const dataset = getCommschedRows_(["poNumber", "poSla"], context);
 	if (!dataset || !dataset.rows) {
 		return "Cannot find the latest COMMSCHED sheet.";
 	}

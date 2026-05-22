@@ -35,6 +35,491 @@ function normalizeDashCharacters_(text) {
 	return String(text || "").replace(/[‐‑‒–—―−]/g, "-");
 }
 
+const CANONICAL_DIVISIONS_ = [
+	"Admin",
+	"Build and Deploy",
+	"Common Infra Planning and Engineering",
+	"Insights Analytics",
+	"Network Digitalization",
+	"Network Operations and Assurance",
+	"Service Planning and Engineering",
+	"Shared Services",
+	"Strategic Partnerships and Programs",
+	"Transformation and Strategy Execution",
+];
+
+const DIVISION_STOP_WORDS_ = {
+	and: true,
+	the: true,
+	of: true,
+	for: true,
+	division: true,
+	divisions: true,
+};
+
+function stripParentheticalText_(value) {
+	return String(value || "").replace(/\([^)]*\)/g, " ");
+}
+
+function normalizeDivisionText_(value) {
+	return normalizeText(stripParentheticalText_(value));
+}
+
+function tokenizeDivisionText_(value) {
+	return tokenize(normalizeDivisionText_(value)).filter(function(token) {
+		return !DIVISION_STOP_WORDS_[token];
+	});
+}
+
+function buildAcronymFromTokens_(tokens) {
+	return (tokens || [])
+		.filter(function(token) {
+			return Boolean(token);
+		})
+		.map(function(token) {
+			return token.charAt(0);
+		})
+		.join("");
+}
+
+function scoreDivisionSimilarity_(candidateDivision, canonicalDivision) {
+	const candidateNorm = normalizeDivisionText_(candidateDivision);
+	const canonicalNorm = normalizeDivisionText_(canonicalDivision);
+	if (!candidateNorm || !canonicalNorm) {
+		return 0;
+	}
+
+	if (candidateNorm === canonicalNorm) {
+		return 1;
+	}
+
+	if (
+		candidateNorm.indexOf(canonicalNorm) !== -1 ||
+		canonicalNorm.indexOf(candidateNorm) !== -1
+	) {
+		return 0.95;
+	}
+
+	const candidateTokens = tokenizeDivisionText_(candidateDivision);
+	const canonicalTokens = tokenizeDivisionText_(canonicalDivision);
+	const jaccard = jaccardSimilarity(candidateTokens, canonicalTokens);
+	const levenshtein = normalizedLevenshteinSimilarity(
+		candidateNorm,
+		canonicalNorm,
+	);
+	const candidateAcronym = buildAcronymFromTokens_(candidateTokens);
+	const canonicalAcronym = buildAcronymFromTokens_(canonicalTokens);
+	const acronymScore =
+		candidateAcronym &&
+		canonicalAcronym &&
+		candidateAcronym === canonicalAcronym
+			? 1
+			: 0;
+
+	return jaccard * 0.45 + levenshtein * 0.35 + acronymScore * 0.2;
+}
+
+function resolveCanonicalDivision_(rawDivision) {
+	const candidate = String(rawDivision || "").trim();
+	if (!candidate) {
+		return {
+			matched: false,
+			canonicalDivision: "",
+			score: 0,
+		};
+	}
+
+	const normalizedCandidate = normalizeDivisionText_(candidate);
+	for (let i = 0; i < CANONICAL_DIVISIONS_.length; i += 1) {
+		const canonicalDivision = CANONICAL_DIVISIONS_[i];
+		if (normalizedCandidate === normalizeDivisionText_(canonicalDivision)) {
+			return {
+				matched: true,
+				canonicalDivision: canonicalDivision,
+				score: 1,
+			};
+		}
+	}
+
+	let bestDivision = "";
+	let bestScore = 0;
+	for (let i = 0; i < CANONICAL_DIVISIONS_.length; i += 1) {
+		const canonicalDivision = CANONICAL_DIVISIONS_[i];
+		const score = scoreDivisionSimilarity_(candidate, canonicalDivision);
+		if (score > bestScore) {
+			bestScore = score;
+			bestDivision = canonicalDivision;
+		}
+	}
+
+	if (bestScore >= 0.58) {
+		return {
+			matched: true,
+			canonicalDivision: bestDivision,
+			score: bestScore,
+		};
+	}
+
+	return {
+		matched: false,
+		canonicalDivision: "",
+		score: bestScore,
+	};
+}
+
+function extractFirstNameFromFullName_(fullName) {
+	const trimmedFullName = String(fullName || "").trim().replace(/\s+/g, " ");
+	if (trimmedFullName) {
+		const firstToken = trimmedFullName.split(" ")[0] || "";
+		const cleanedFirstToken = firstToken.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'’-]/g, "");
+		if (cleanedFirstToken) {
+			return cleanedFirstToken.charAt(0).toUpperCase() + cleanedFirstToken.slice(1);
+		}
+	}
+
+	return "";
+}
+
+function getCurrentUserEmail_() {
+	const candidates = getCurrentUserEmailCandidates_();
+	return candidates.length > 0 ? candidates[0] : "";
+}
+
+function getCurrentUserEmailCandidates_() {
+	const candidates = [];
+	const pushCandidate = function(value) {
+		const normalized = normalizeEmailAddress_(value);
+		if (normalized && candidates.indexOf(normalized) === -1) {
+			candidates.push(normalized);
+		}
+
+		const stripped = stripPlusAliasFromEmail_(normalized);
+		if (stripped && candidates.indexOf(stripped) === -1) {
+			candidates.push(stripped);
+		}
+	};
+
+	try {
+		const activeUser = Session.getActiveUser();
+		if (activeUser && typeof activeUser.getEmail === "function") {
+			pushCandidate(activeUser.getEmail());
+		}
+	} catch (error) {
+		// If the active user cannot be resolved, treat the user as unauthenticated.
+	}
+
+	try {
+		const effectiveUser = Session.getEffectiveUser();
+		if (effectiveUser && typeof effectiveUser.getEmail === "function") {
+			pushCandidate(effectiveUser.getEmail());
+		}
+	} catch (error) {
+		// Ignore fallback lookup failures.
+	}
+
+	return candidates;
+}
+
+function getCurrentUserSessionCacheKey_() {
+	try {
+		const tempKey = String(Session.getTemporaryActiveUserKey() || "").trim();
+		if (tempKey) {
+			return "userProfile:" + tempKey;
+		}
+	} catch (error) {
+		// Ignore and fall back to an email-based key.
+	}
+
+	const email = getCurrentUserEmail_();
+	if (email) {
+		return "userProfile:" + email;
+	}
+
+	return "userProfile:guest";
+}
+
+function normalizeEmailAddress_(value) {
+	return String(value || "").trim().toLowerCase();
+}
+
+function stripPlusAliasFromEmail_(email) {
+	const normalized = normalizeEmailAddress_(email);
+	const atIndex = normalized.indexOf("@");
+	if (atIndex === -1) {
+		return normalized;
+	}
+
+	const localPart = normalized.slice(0, atIndex);
+	const domainPart = normalized.slice(atIndex + 1);
+	const plusIndex = localPart.indexOf("+");
+	if (plusIndex === -1) {
+		return normalized;
+	}
+
+	return `${localPart.slice(0, plusIndex)}@${domainPart}`;
+}
+
+function getCurrentUserAuthDebug_() {
+	const debug = {
+		authStatus: "unknown",
+		authUrl: "",
+		requiredScopes: [],
+	};
+
+	try {
+		const authInfo = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+		if (authInfo) {
+			debug.authStatus = String(authInfo.getAuthorizationStatus() || "unknown");
+			debug.authUrl = String(authInfo.getAuthorizationUrl() || "");
+			const requiredScopes = authInfo.getRequiredScopes();
+			debug.requiredScopes = Array.isArray(requiredScopes)
+				? requiredScopes.map(function(scope) {
+					return String(scope || "");
+				}).filter(function(scope) {
+					return Boolean(scope);
+				})
+				: [];
+		}
+	} catch (error) {
+		debug.authStatus = "error";
+	}
+
+	return debug;
+}
+
+function getEmailsSheet_() {
+	const ss = SpreadsheetApp.getActiveSpreadsheet();
+	if (!ss) {
+		return null;
+	}
+
+	return ss.getSheetByName("EMAILS");
+}
+
+function getMetricsSheet_() {
+	const ss = SpreadsheetApp.getActiveSpreadsheet();
+	if (!ss) {
+		return null;
+	}
+
+	return ss.getSheetByName("METRICS");
+}
+
+function findEmailRowByAddress_(email) {
+	const sheet = getEmailsSheet_();
+	const targetCandidates = Array.isArray(email)
+		? email.map(function(candidate) {
+			return normalizeEmailAddress_(candidate);
+		}).filter(function(candidate, index, arr) {
+			return Boolean(candidate) && arr.indexOf(candidate) === index;
+		})
+		: getCurrentUserEmailCandidates_().concat(normalizeEmailAddress_(email));
+	const candidateSet = targetCandidates.concat(
+		targetCandidates.map(function(candidate) {
+			return stripPlusAliasFromEmail_(candidate);
+		}),
+	).filter(function(candidate, index, arr) {
+		return Boolean(candidate) && arr.indexOf(candidate) === index;
+	});
+
+	if (!sheet || candidateSet.length === 0) {
+		return null;
+	}
+
+	const lastRow = sheet.getLastRow();
+	if (lastRow < 2) {
+		return null;
+	}
+
+	const rows = sheet.getRange(2, 1, lastRow - 1, 6).getDisplayValues();
+	for (let i = 0; i < rows.length; i += 1) {
+		const row = rows[i] || [];
+		const rowEmail = normalizeEmailAddress_(row[1] || "");
+		const normalizedRowCandidates = [rowEmail, stripPlusAliasFromEmail_(rowEmail)].filter(function(candidate, index, arr) {
+			return Boolean(candidate) && arr.indexOf(candidate) === index;
+		});
+		const hasMatch = normalizedRowCandidates.some(function(candidate) {
+			return candidateSet.indexOf(candidate) !== -1;
+		});
+		if (hasMatch) {
+			return {
+				rowNumber: i + 2,
+				values: row,
+			};
+		}
+	}
+
+	return null;
+}
+
+function buildUserProfileFromEmailRow_(email, rowInfo) {
+	const values = rowInfo && rowInfo.values ? rowInfo.values : [];
+	const divisionRaw = String(values[0] || "").trim();
+	const rowEmail = String(values[1] || email || "").trim().toLowerCase();
+	const fullName = String(values[2] || "").trim();
+	const divisionMatch = resolveCanonicalDivision_(divisionRaw);
+	const firstName = extractFirstNameFromFullName_(fullName);
+	const isAdmin = divisionMatch.matched && divisionMatch.canonicalDivision === "Admin";
+	const accessAllowed = Boolean(rowInfo && divisionMatch.matched);
+
+	return {
+		email: rowEmail,
+		rowNumber: rowInfo ? rowInfo.rowNumber : null,
+		divisionRaw: divisionRaw,
+		divisionCanonical: divisionMatch.canonicalDivision,
+		divisionDisplay: divisionMatch.matched ? divisionMatch.canonicalDivision : divisionRaw,
+		fullName: fullName,
+		firstName: firstName,
+		isAdmin: isAdmin,
+		hasValidDivision: divisionMatch.matched,
+		accessAllowed: accessAllowed,
+	};
+}
+
+function getCurrentUserProfile_(options) {
+	const shouldRefresh = Boolean(options && options.forceRefresh);
+	const cacheKey = getCurrentUserSessionCacheKey_();
+	if (!shouldRefresh) {
+		const cachedProfile = getCachedJson_(cacheKey);
+		if (cachedProfile && typeof cachedProfile === "object") {
+			return cachedProfile;
+		}
+	}
+
+	const email = getCurrentUserEmail_();
+	const rowInfo = findEmailRowByAddress_(email);
+	const profile = rowInfo
+		? buildUserProfileFromEmailRow_(email, rowInfo)
+		: {
+			email: email,
+			rowNumber: null,
+			divisionRaw: "",
+			divisionCanonical: "",
+			divisionDisplay: "",
+			fullName: "",
+			firstName: "",
+			isAdmin: false,
+			hasValidDivision: false,
+			accessAllowed: false,
+		};
+
+	if (options && options.incrementVisits && profile.rowNumber) {
+		incrementEmailCounter_(profile.rowNumber, 4, 1);
+	}
+
+	setCachedJson_(cacheKey, profile, 21600);
+
+	return profile;
+}
+
+function incrementSheetCounter_(sheetName, rowNumber, columnNumber, delta) {
+	const ss = SpreadsheetApp.getActiveSpreadsheet();
+	if (!ss || !sheetName || !rowNumber || !columnNumber) {
+		return false;
+	}
+
+	const sheet = ss.getSheetByName(sheetName);
+	if (!sheet) {
+		return false;
+	}
+
+	const amount = Number(delta || 1);
+	const lock = LockService.getScriptLock();
+	try {
+		lock.waitLock(5000);
+		const range = sheet.getRange(rowNumber, columnNumber);
+		const currentValue = Number(range.getValue()) || 0;
+		range.setValue(currentValue + amount);
+		return true;
+	} catch (error) {
+		return false;
+	} finally {
+		try {
+			lock.releaseLock();
+		} catch (releaseError) {
+			// Ignore lock cleanup failures.
+		}
+	}
+}
+
+function incrementEmailCounter_(rowNumber, columnNumber, delta) {
+	return incrementSheetCounter_("EMAILS", rowNumber, columnNumber, delta);
+}
+
+function findMetricRowByFunctionName_(functionName) {
+	const sheet = getMetricsSheet_();
+	const targetName = String(functionName || "").trim().toLowerCase();
+	if (!sheet || !targetName) {
+		return null;
+	}
+
+	const lastRow = sheet.getLastRow();
+	if (lastRow < 2) {
+		return null;
+	}
+
+	const rows = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+	for (let i = 0; i < rows.length; i += 1) {
+		const rowName = String((rows[i] || [])[0] || "").trim().toLowerCase();
+		if (rowName && rowName === targetName) {
+			return i + 2;
+		}
+	}
+
+	return null;
+}
+
+function incrementMetricCounter_(functionName, triggerSource) {
+	const rowNumber = findMetricRowByFunctionName_(functionName);
+	if (!rowNumber) {
+		return false;
+	}
+
+	const source = String(triggerSource || "query").trim().toLowerCase();
+	const columnNumber = source === "menu" ? 3 : 2;
+	return incrementSheetCounter_("METRICS", rowNumber, columnNumber, 1);
+}
+
+function getAccessDeniedMessage_() {
+	return "You do not have access to this chatbot, please contact an admin.";
+}
+
+function getCommschedDivisionDeniedMessage_(poNumber) {
+	return "Your division does not have access to <b>PO " + poNumber + "</b>.";
+}
+
+function getRequestContext_(options) {
+	const userProfile = options && options.userProfile ? options.userProfile : getCurrentUserProfile_();
+	const triggerSource =
+		options && typeof options === "object" && !Array.isArray(options) && options.triggerSource
+			? String(options.triggerSource || "query")
+			: typeof options === "string"
+				? String(options || "query")
+				: "query";
+
+	return {
+		triggerSource: triggerSource,
+		userProfile: userProfile,
+	};
+}
+
+function rowMatchesUserDivision_(rowDivisionValue, userProfile) {
+	if (!userProfile || !userProfile.accessAllowed) {
+		return false;
+	}
+
+	if (userProfile.isAdmin) {
+		return true;
+	}
+
+	const resolvedRowDivision = resolveCanonicalDivision_(rowDivisionValue);
+	if (!resolvedRowDivision.matched) {
+		return false;
+	}
+
+	return resolvedRowDivision.canonicalDivision === userProfile.divisionCanonical;
+}
+
 /****************** COMMSCHED SHARED HELPERS ******************/
 
 function getCommschedNotFoundMessage_(poNumber) {
@@ -171,9 +656,19 @@ function getIntentInfo(userText) {
 	};
 }
 
-function getGeminiResponse(userText) {
+function getGeminiResponse(userText, options) {
 	const CONFIDENCE_THRESHOLD = 0.5;
 	const fallback = "Sorry, I’m not sure I understood that.";
+	const requestContext = getRequestContext_(options);
+	const userProfile = requestContext.userProfile || getCurrentUserProfile_();
+
+	if (userProfile && userProfile.rowNumber) {
+		incrementEmailCounter_(userProfile.rowNumber, 5, 1);
+	}
+
+	if (!userProfile || !userProfile.accessAllowed) {
+		return getAccessDeniedMessage_();
+	}
 
 	const parsed = parseInput(userText);
 	if (parsed && parsed.error) {
@@ -183,18 +678,21 @@ function getGeminiResponse(userText) {
 		return fallback;
 	}
 	if (parsed.confidence < CONFIDENCE_THRESHOLD) {
-		return showDidYouMean(parsed.suggestions);
+		const didYouMean = showDidYouMean(parsed.suggestions);
+		if (
+			didYouMean &&
+			typeof didYouMean === "object" &&
+			Array.isArray(didYouMean.suggestions) &&
+			didYouMean.suggestions.length > 0 &&
+			userProfile.rowNumber
+		) {
+			incrementEmailCounter_(userProfile.rowNumber, 6, 1);
+		}
+		return didYouMean;
 	}
 
 	const intent = INTENTS.find((i) => i.name === parsed.intent);
 	if (!intent) return fallback;
-
-	const required = intent.requiredEntities || [];
-	const entities = parsed.entities || {};
-	const missingRequired = required.find((key) => !entities[key]);
-	if (missingRequired) {
-		return getMissingEntityMessage(missingRequired);
-	}
 
 	const handlers = {
 		checkPoStatus: checkPoStatus,
@@ -211,7 +709,15 @@ function getGeminiResponse(userText) {
 		return fallback;
 	}
 
-	return handler(entities, parsed);
+	incrementMetricCounter_(intent.handler, requestContext.triggerSource);
+
+	const required = intent.requiredEntities || [];
+	const entities = parsed.entities || {};
+	const missingRequired = required.find((key) => !entities[key]);
+	if (missingRequired) {
+		return getMissingEntityMessage(missingRequired);
+	}
+	return handler(entities, parsed, requestContext);
 }
 
 function getLinksSheet_() {
@@ -456,12 +962,54 @@ function resolveCommschedSheet_(workbook, sourceInfo) {
 	return findWorksheetByCandidates_(workbook, candidates, /commsched_working file/i);
 }
 
+function findFirstVisibleSheet_(workbook) {
+	if (!workbook) {
+		return null;
+	}
+
+	const sheets = workbook.getSheets();
+	for (let i = 0; i < sheets.length; i += 1) {
+		const sheet = sheets[i];
+		if (sheet && isVisibleSheet_(sheet)) {
+			return sheet;
+		}
+	}
+
+	return null;
+}
+
+function resolveSheetByHeader_(workbook, headerRow, headerName) {
+	if (!workbook) {
+		return null;
+	}
+
+	const sheets = workbook.getSheets();
+	for (let i = 0; i < sheets.length; i += 1) {
+		const sheet = sheets[i];
+		if (!sheet || !isVisibleSheet_(sheet)) {
+			continue;
+		}
+
+		const lastColumn = sheet.getLastColumn();
+		if (lastColumn < 1) {
+			continue;
+		}
+
+		const headers = sheet.getRange(headerRow, 1, 1, lastColumn).getDisplayValues()[0] || [];
+		if (findHeaderColumn_(headers, headerName) !== -1) {
+			return sheet;
+		}
+	}
+
+	return null;
+}
+
 function resolveRfpSheet_(workbook) {
-	return findWorksheetByCandidates_(workbook, ["Form Responses 1"], /^Form Responses 1$/i);
+	return resolveSheetByHeader_(workbook, 1, "Division per Proponent Name:") || findFirstVisibleSheet_(workbook);
 }
 
 function resolveGrSheet_(workbook) {
-	return findWorksheetByCandidates_(workbook, ["Form Responses", "Form Responses 1"], /^Form Responses( 1)?$/i);
+	return findFirstVisibleSheet_(workbook);
 }
 
 const DATASET_SPECS = {
@@ -474,6 +1022,7 @@ const DATASET_SPECS = {
 		dataStartRow: 4,
 		cacheTtlSeconds: 900,
 		fields: {
+			division: { match: "exact", value: "Division" },
 			poNumber: { match: "exact", value: "PO Number" },
 			poDate: { match: "exact", value: "PO Date" },
 			poSla: { match: "exact", value: "PO SLA" },
@@ -486,6 +1035,7 @@ const DATASET_SPECS = {
 			remainingBalance: { match: "rightmostPrefix", value: "To be GRed (PO Amount - GR) (as of" },
 		},
 		fieldPropertyNames: {
+			division: "divisionColumn",
 			poNumber: "poColumn",
 			poDate: "poDateColumn",
 			poSla: "poSlaColumn",
@@ -506,8 +1056,12 @@ const DATASET_SPECS = {
 		headerRow: 1,
 		dataStartRow: 2,
 		cacheTtlSeconds: 900,
-		fields: {},
-		fieldPropertyNames: {},
+		fields: {
+			division: { match: "exact", value: "Division per Proponent Name:" },
+		},
+		fieldPropertyNames: {
+			division: "divisionColumn",
+		},
 	},
 	GR: {
 		sourceResolver: function() {
@@ -521,6 +1075,117 @@ const DATASET_SPECS = {
 		fieldPropertyNames: {},
 	},
 };
+
+function resolveDatasetUserProfile_(options) {
+	if (options && options.userProfile) {
+		return options.userProfile;
+	}
+	if (
+		options &&
+		typeof options === "object" &&
+		!Array.isArray(options) &&
+		options.email !== undefined &&
+		options.accessAllowed !== undefined
+	) {
+		return options;
+	}
+
+	return getCurrentUserProfile_();
+}
+
+function buildLookupMissResult_(meta) {
+	return {
+		found: false,
+		meta: meta,
+		match: null,
+		rowValues: [],
+		values: {},
+	};
+}
+
+function buildLookupResultFromRow_(meta, rowNumber, rowValues, requestedFieldKeys, method) {
+	const values = {};
+	for (let i = 0; i < requestedFieldKeys.length; i += 1) {
+		const fieldKey = requestedFieldKeys[i];
+		const columnIndex = meta.fieldColumns[fieldKey];
+		values[fieldKey] = typeof columnIndex === "number" && columnIndex >= 0 ? rowValues[columnIndex] : "";
+	}
+
+	return {
+		found: true,
+		meta: meta,
+		match: {
+			row: rowNumber,
+			method: method || "scan",
+		},
+		rowValues: rowValues,
+		values: values,
+	};
+}
+
+function shouldApplyDivisionFilter_(spec, userProfile) {
+	return Boolean(
+		spec &&
+		spec.fields &&
+		spec.fields.division &&
+		userProfile &&
+		userProfile.accessAllowed &&
+		!userProfile.isAdmin,
+	);
+}
+
+function getRequestedFieldKeysForDataset_(datasetKey, requestedFieldKeys, userProfile) {
+	const spec = DATASET_SPECS[datasetKey];
+	const normalizedRequestedFields = normalizeRequestedFields_(requestedFieldKeys);
+	const fieldKeys = normalizedRequestedFields.length > 0 ? normalizedRequestedFields : Object.keys(spec && spec.fields ? spec.fields : {});
+	if (shouldApplyDivisionFilter_(spec, userProfile) && fieldKeys.indexOf("division") === -1) {
+		fieldKeys.push("division");
+	}
+
+	return fieldKeys;
+}
+
+function findMatchingRowInColumnWithDivision_(sheet, columnIndex, divisionColumnIndex, dataStartRow, lastRow, targetValue, userProfile) {
+	if (!sheet || typeof columnIndex !== "number" || columnIndex < 0) {
+		return null;
+	}
+
+	const rowCount = lastRow - dataStartRow + 1;
+	if (rowCount < 1) {
+		return null;
+	}
+
+	const target = String(targetValue || "").trim();
+	if (!target) {
+		return null;
+	}
+
+	const lookupRange = sheet.getRange(dataStartRow, columnIndex + 1, rowCount, 1);
+	const lookupValues = lookupRange.getDisplayValues();
+	const divisionValues =
+		typeof divisionColumnIndex === "number" && divisionColumnIndex >= 0
+			? sheet.getRange(dataStartRow, divisionColumnIndex + 1, rowCount, 1).getDisplayValues()
+			: null;
+
+	for (let i = 0; i < rowCount; i += 1) {
+		const cellValue = String((lookupValues[i] || [])[0] || "").trim();
+		if (cellValue !== target) {
+			continue;
+		}
+
+		const rowDivisionValue = divisionValues ? String((divisionValues[i] || [])[0] || "").trim() : "";
+		if (!rowMatchesUserDivision_(rowDivisionValue, userProfile)) {
+			continue;
+		}
+
+		return {
+			row: dataStartRow + i,
+			method: "scan",
+		};
+	}
+
+	return null;
+}
 
 function compareSourceCandidates_(a, b) {
 	const aTime = a && a.date instanceof Date ? a.date.getTime() : -Infinity;
@@ -655,7 +1320,7 @@ function buildDatasetMetaCacheKey_(datasetKey, sourceInfo, sheetName, requestedF
 	const sourceLink = String(sourceInfo && sourceInfo.link ? sourceInfo.link : "").trim();
 	const sourceDateMs = sourceInfo && sourceInfo.date instanceof Date ? sourceInfo.date.getTime() : "";
 	const fieldKey = normalizeRequestedFields_(requestedFieldKeys).slice().sort().join(",");
-	return [datasetKey, sourceLink, String(sourceDateMs), String(sheetName || ""), fieldKey].join(":");
+	return ["v2", datasetKey, sourceLink, String(sourceDateMs), String(sheetName || ""), fieldKey].join(":");
 }
 
 function getDatasetMeta_(datasetKey, requestedFieldKeys, options) {
@@ -664,8 +1329,12 @@ function getDatasetMeta_(datasetKey, requestedFieldKeys, options) {
 		return null;
 	}
 
-	const normalizedRequestedFields = normalizeRequestedFields_(requestedFieldKeys);
-	const fieldKeys = normalizedRequestedFields.length > 0 ? normalizedRequestedFields : Object.keys(spec.fields || {});
+	const userProfile = resolveDatasetUserProfile_(options);
+	if (!userProfile || !userProfile.accessAllowed) {
+		return null;
+	}
+
+	const fieldKeys = getRequestedFieldKeysForDataset_(datasetKey, requestedFieldKeys, userProfile);
 	const sourceInfo = spec.sourceResolver ? spec.sourceResolver(options || {}) : null;
 	if (!sourceInfo || !sourceInfo.link) {
 		return null;
@@ -720,6 +1389,7 @@ function getDatasetMeta_(datasetKey, requestedFieldKeys, options) {
 	return meta;
 }
 function getDatasetRowsByField_(datasetKey, requestedFieldKeys, options) {
+	const userProfile = resolveDatasetUserProfile_(options);
 	const meta = getDatasetMeta_(datasetKey, requestedFieldKeys, options);
 	if (!meta) {
 		return null;
@@ -752,10 +1422,16 @@ function getDatasetRowsByField_(datasetKey, requestedFieldKeys, options) {
 	const displayRows = range.getDisplayValues();
 	const fieldKeys = normalizeRequestedFields_(meta.requestedFields || requestedFieldKeys);
 	const rows = [];
+	const shouldFilterByDivision = shouldApplyDivisionFilter_(DATASET_SPECS[datasetKey], userProfile);
 
 	for (let i = 0; i < rowCount; i += 1) {
 		const rawRow = rawRows[i] || [];
 		const displayRow = displayRows[i] || [];
+		const rowDivisionValue = typeof meta.fieldColumns.division === "number" && meta.fieldColumns.division >= 0 ? String(displayRow[meta.fieldColumns.division] || "").trim() : "";
+		if (shouldFilterByDivision && !rowMatchesUserDivision_(rowDivisionValue, userProfile)) {
+			continue;
+		}
+
 		const row = {
 			rowNumber: meta.dataStartRow + i,
 			values: {},
@@ -784,6 +1460,7 @@ function getCommschedRows_(requestedFieldKeys, options) {
 }
 
 function lookupDatasetRowByField_(datasetKey, lookupFieldKey, lookupValue, requestedFieldKeys, options) {
+	const userProfile = resolveDatasetUserProfile_(options);
 	const normalizedRequestedFields = normalizeRequestedFields_(requestedFieldKeys);
 	const meta = getDatasetMeta_(datasetKey, [lookupFieldKey].concat(normalizedRequestedFields), options);
 	if (!meta) {
@@ -812,32 +1489,33 @@ function lookupDatasetRowByField_(datasetKey, lookupFieldKey, lookupValue, reque
 		return null;
 	}
 
+	const divisionColumnIndex = typeof meta.fieldColumns.division === "number" ? meta.fieldColumns.division : -1;
+	const shouldFilterByDivision = shouldApplyDivisionFilter_(DATASET_SPECS[datasetKey], userProfile);
 	const match = findExactMatchRowInColumn_(sheet, lookupColumn, meta.dataStartRow, lastRow, lookupValue);
 	if (!match) {
-		return {
-			found: false,
-			meta: meta,
-			match: null,
-			rowValues: [],
-			values: {},
-		};
+		return buildLookupMissResult_(meta);
+	}
+
+	if (shouldFilterByDivision && typeof divisionColumnIndex === "number" && divisionColumnIndex >= 0) {
+		const divisionValue = String((sheet.getRange(match.row, divisionColumnIndex + 1).getDisplayValue() || "")).trim();
+		if (!rowMatchesUserDivision_(divisionValue, userProfile)) {
+			return {
+				found: false,
+				accessDenied: true,
+				message: getCommschedDivisionDeniedMessage_(lookupValue),
+				meta: meta,
+				match: {
+					row: match.row,
+					method: match.method || "scan",
+				},
+				rowValues: [],
+				values: {},
+			};
+		}
 	}
 
 	const rowValues = sheet.getRange(match.row, 1, 1, meta.lastColumn).getDisplayValues()[0] || [];
-	const values = {};
-	for (let i = 0; i < normalizedRequestedFields.length; i += 1) {
-		const fieldKey = normalizedRequestedFields[i];
-		const columnIndex = meta.fieldColumns[fieldKey];
-		values[fieldKey] = typeof columnIndex === "number" && columnIndex >= 0 ? rowValues[columnIndex] : "";
-	}
-
-	return {
-		found: true,
-		meta: meta,
-		match: match,
-		rowValues: rowValues,
-		values: values,
-	};
+	return buildLookupResultFromRow_(meta, match.row, rowValues, normalizedRequestedFields, match.method);
 }
 
 function lookupCommschedPoRow_(poNumber, requestedFieldKeys, options) {
