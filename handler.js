@@ -172,7 +172,14 @@ function listPoAging(entities, parsed, context) {
 	const rawAgeFilter = String(entities.AGE_FILTER || "").trim();
 	const allowedBuckets = resolvePoSlaBucketCellsForFilter_(rawAgeFilter);
 	if (!allowedBuckets || allowedBuckets.length === 0) {
-		return getMissingEntityMessage("AGE_FILTER");
+		const prompt = getMissingEntityMessage("AGE_FILTER");
+		const response = (typeof prompt === "object" && prompt) ? Object.assign({}, prompt) : { text: String(prompt || "") };
+		response.pendingIntent = {
+			intent: parsed && parsed.intent ? parsed.intent : "list_po_aging",
+			missingEntity: "AGE_FILTER",
+			phrase: "List all POs X old",
+		};
+		return response;
 	}
 
 	const dataset = getCommschedRows_(["poNumber", "poSla"], context);
@@ -326,8 +333,8 @@ function listPoVendor(entities, parsed, context) {
 		return lines.join("\n");
 	}
 
-	// Otherwise present top candidates using existing suggestion format
-	const suggestions = top.map(function(t) { return { id: t.vendor, label: t.vendor }; });
+	// Otherwise present top candidates using full-query suggestion labels
+	const suggestions = top.map(function(t) { return { id: t.vendor, label: buildFullQueryLabel('list_po_vendor', t.vendor) }; });
 	return showDidYouMean(suggestions);
 }
 

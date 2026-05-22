@@ -157,11 +157,11 @@ const INTENTS = [
 		name: "list_po_vendor",
 		phrases: [
 			"List all POs from X",
-			"Show me all pos from X",
+			"Show me all POs from X",
 			"List POs from X",
-			"List all POs from {vendor}",
-			"show me all pos from nokia",
-			"list all pos from huawei",
+			"give me all POs from X",
+			"which POs are from X",
+			"all POs under X vendor"
 		],
 		requiredEntities: ["VENDOR"],
 		responseType: "list",

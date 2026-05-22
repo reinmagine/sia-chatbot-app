@@ -286,9 +286,9 @@
         );
       }
 
-      function MessageContent({ text, suggestions, download, onSelectSuggestion }) {
+      function MessageContent({ text, suggestions, download, onSelectSuggestion, hideSuggestionHeader = false }) {
         const rawText = String(text || "");
-        const showSuggestionHeader = !rawText.toLowerCase().startsWith("did you mean");
+        const showSuggestionHeader = !hideSuggestionHeader && !rawText.toLowerCase().startsWith("did you mean");
 
         // Sanitize incoming HTML but allow a small whitelist of tags
         const sanitizeHtml = (dirty) => {
@@ -490,6 +490,7 @@
         const [hasStarted, setHasStarted] = useState(false);
         const [showResetConfirm, setShowResetConfirm] = useState(false);
         const [intentSuggestions, setIntentSuggestions] = useState(null);
+        const [pendingIntent, setPendingIntent] = useState(null); // short-lived pending intent for slot-filling
         const [messages, setMessages] = useState([]);
         const [inputValue, setInputValue] = useState("");
         const [isTyping, setIsTyping] = useState(false);
@@ -721,7 +722,7 @@
           if (!raw) return;
           const startedAt = Date.now();
 
-          // Set User Message
+          // Set User Message (display the user's raw text)
           setMessages((prev) => [
             ...prev,
             {
@@ -735,6 +736,45 @@
           inputRef.current && inputRef.current.focus();
 
           setIsTyping(true);
+
+          // If we have a short-lived pending intent and the user replied with a bare PO number,
+          // combine it into the original intent for sending, but still display the bare value.
+          let sendText = raw;
+          try {
+            if (pendingIntent) {
+              if (pendingIntent.missingEntity === "PO_NUMBER" && /^\d{10}$/.test(raw)) {
+                if (pendingIntent.phrase) {
+                  sendText = String(pendingIntent.phrase)
+                    .replace(/\bPO X\b/gi, "PO " + raw)
+                    .replace(/\bX\b/gi, raw);
+                } else {
+                  sendText = raw;
+                }
+                setPendingIntent(null);
+              } else if (pendingIntent.missingEntity === "AGE_FILTER" && raw) {
+                if (pendingIntent.phrase) {
+                  sendText = String(pendingIntent.phrase)
+                    .replace(/\bX\b/gi, raw)
+                    .replace(/\s+/g, " ")
+                    .trim();
+                } else {
+                  sendText = "List all POs " + raw + " old";
+                }
+                setPendingIntent(null);
+              } else if (pendingIntent.missingEntity === "VENDOR" && raw) {
+                // Combine vendor reply into the original intent phrase (replace X)
+                if (pendingIntent.phrase) {
+                  sendText = String(pendingIntent.phrase).replace(/\bX\b/gi, raw).replace(/\s+/g, " ").trim();
+                } else {
+                  // If no phrase available, try a conservative full-query
+                  sendText = "List all POs from " + raw;
+                }
+                setPendingIntent(null);
+              }
+            }
+          } catch (e) {
+            sendText = raw;
+          }
 
           let shouldShowWait = false;
           if (USER_ACCESS_ALLOWED) {
@@ -766,7 +806,7 @@
           await new Promise((r) => setTimeout(r, delay));
 
           try {
-            const resp = await sendToServer(raw, triggerSource);
+            const resp = await sendToServer(sendText, triggerSource);
 
             // Remove any interim 'Please wait' bot-wait messages we may have added
             setMessages((prev) => prev.filter((m) => !(m.id && String(m.id).startsWith("bot-wait-"))));
@@ -781,6 +821,11 @@
             const textVal = isStructuredResponse ? String(resp.text || "") : String(resp || "");
             const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
             const responseText = isStructuredResponse && resp.download ? `${textVal.trim()} (Generated in ${elapsedSeconds}s)` : textVal;
+            // If server returned a pendingIntent, store it short-term for the next user turn
+            if (resp && resp.pendingIntent) {
+              setPendingIntent(resp.pendingIntent);
+            }
+
             setMessages((prev) => [
               ...prev,
               {
@@ -789,6 +834,7 @@
                 text: responseText,
                 expression: isStructuredResponse && resp.expression ? resp.expression : guessExpression(textVal),
                 suggestions: isStructuredResponse && Array.isArray(resp.suggestions) ? resp.suggestions : undefined,
+                hideSuggestionHeader: isStructuredResponse && Boolean(resp.hideSuggestionHeader),
                 download: isStructuredResponse && resp.download ? resp.download : undefined,
                 ts: new Date().toISOString(),
               },
@@ -959,6 +1005,7 @@
                           text={m.text} 
                           suggestions={m.suggestions} 
                           download={m.download}
+                          hideSuggestionHeader={m.hideSuggestionHeader}
                           onSelectSuggestion={(label) => handleSend(label, "menu")} 
                         />
                       </div>

@@ -12,6 +12,27 @@ function showDidYouMean(suggestions) { // run this if confidence is < 0.9
 		})),
 	};
 }
+function buildFullQueryLabel(intentName, entityValue) {
+	if (!intentName) return String(entityValue || "");
+	const intent = (typeof INTENTS !== "undefined" && Array.isArray(INTENTS)) ? INTENTS.find(function(i) { return i && i.name === intentName; }) : null;
+	let template = null;
+	if (intent && Array.isArray(intent.phrases) && intent.phrases.length > 0) {
+		// Prefer a user-friendly phrasing that starts with 'Show' if available,
+		// otherwise fall back to the first phrase.
+		const showPhrase = intent.phrases.find(function(p) { return /^show\b/i.test(String(p || "")); });
+		template = showPhrase || intent.phrases[0];
+	}
+	// Fallback templates for known intents
+	if (!template) {
+		if (intentName === "list_po_vendor") template = "List all POs from X";
+		else if (intentName && intentName.indexOf("list") === 0) template = "List all POs from X";
+		else template = String(entityValue || "");
+	}
+
+	let label = String(template || "").replace(/\bX\b/gi, String(entityValue || "")).replace(/\s+/g, " ").trim();
+	if (!label) label = String(entityValue || "");
+	return label.charAt(0).toUpperCase() + label.slice(1);
+}
 
 function getMissingEntityMessage(entityKey) {
 	const prompts = {
@@ -19,15 +40,21 @@ function getMissingEntityMessage(entityKey) {
 		PO_NUMBER: "Please provide a 10-digit PO number",
 		DATE: "Please provide a date (MM/DD/YYYY)",
 		YEAR: "Please provide a year",
-		AGE_FILTER: `
-		Please provide an aging filter:
-			- <6 months
-			- 6-9 months
-			- 9-12 months
-			- 12-24 months
-			- >24 months
-		`,
 	};
+
+	if (entityKey === "AGE_FILTER") {
+		return {
+			text: "Please provide an aging filter:",
+			hideSuggestionHeader: true,
+			suggestions: [
+				{ id: "age-filter-1", label: "<6 months" },
+				{ id: "age-filter-2", label: "6-9 months" },
+				{ id: "age-filter-3", label: "9-12 months" },
+				{ id: "age-filter-4", label: "12-24 months" },
+				{ id: "age-filter-5", label: ">24 months" },
+			],
+		};
+	}
 
 	return prompts[entityKey] || "Please provide more information";
 }
@@ -719,7 +746,30 @@ function getGeminiResponse(userText, options) {
 	const entities = parsed.entities || {};
 	const missingRequired = required.find((key) => !entities[key]);
 	if (missingRequired) {
-		return getMissingEntityMessage(missingRequired);
+		// Provide structured pendingIntent metadata so the client
+		// can remember the original intent and slot type for one-turn slot-filling.
+		const prompt = getMissingEntityMessage(missingRequired);
+		const pending = {
+			intent: parsed && parsed.intent ? parsed.intent : null,
+			missingEntity: missingRequired,
+			phrase:
+				missingRequired === "AGE_FILTER"
+					? "List all POs X old"
+					: parsed && parsed.matchedPhrase
+						? parsed.matchedPhrase
+						: null,
+		};
+
+		// For safer behavior: return pendingIntent for vendor and PO number so the
+		// client can stitch a short reply (vendor name or 10-digit PO) back into the
+		// original intent. Other missing entities still receive a plain prompt.
+		if (missingRequired === "PO_NUMBER" || missingRequired === "VENDOR" || missingRequired === "AGE_FILTER") {
+			const response = (typeof prompt === "object" && prompt) ? Object.assign({}, prompt) : { text: String(prompt || "") };
+			response.pendingIntent = pending;
+			return response;
+		}
+
+		return prompt;
 	}
 	return handler(entities, parsed, requestContext);
 }
