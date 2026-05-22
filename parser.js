@@ -220,9 +220,24 @@ function scoreIntentAgainstPhrases(inputForMatch, phrases) {
 	return { score: bestScore, phrase: bestPhrase };
 }
 
-function buildIntentSuggestion(intent, inputForMatch, poNumber) {
+function scoreIntentAgainstInputVariants(inputVariants, phrases) {
+	let bestScore = 0;
+	let bestPhrase = null;
+
+	(inputVariants || []).forEach((inputForMatch) => {
+		const scored = scoreIntentAgainstPhrases(inputForMatch, phrases);
+		if (scored.score > bestScore) {
+			bestScore = scored.score;
+			bestPhrase = scored.phrase;
+		}
+	});
+
+	return { score: bestScore, phrase: bestPhrase };
+}
+
+function buildIntentSuggestion(intent, inputVariants, poNumber) {
 	if (!intent || !intent.name) return null;
-	const best = scoreIntentAgainstPhrases(inputForMatch, intent.phrases);
+	const best = scoreIntentAgainstInputVariants(inputVariants, intent.phrases);
 	if (!best.phrase) return null;
 
 	return {
@@ -252,6 +267,10 @@ function parseInput(userText) {
 		normalized,
 		entityMatches,
 	);
+	const inputVariants = [normalizedForMatch];
+	if (normalizedForMatch !== normalized) {
+		inputVariants.push(normalized);
+	}
 	const entities = {};
 	Object.keys(entityMatches).forEach((key) => {
 		const matches = entityMatches[key] || [];
@@ -266,7 +285,7 @@ function parseInput(userText) {
 	const suggestions = [];
 
 	INTENTS.forEach((intent) => {
-		const bestForIntent = scoreIntentAgainstPhrases(normalizedForMatch, intent.phrases);
+		const bestForIntent = scoreIntentAgainstInputVariants(inputVariants, intent.phrases);
 		if (bestForIntent.score > bestScore) {
 			bestScore = bestForIntent.score;
 			bestIntent = intent;
@@ -275,7 +294,7 @@ function parseInput(userText) {
 
 		const suggestion = buildIntentSuggestion(
 			intent,
-			normalizedForMatch,
+			inputVariants,
 			entities.PO_NUMBER,
 		);
 		if (suggestion) {

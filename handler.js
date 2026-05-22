@@ -220,36 +220,15 @@ function listPoAging(entities, parsed, context) {
 		return String(a.poNumber || "").localeCompare(String(b.poNumber || ""));
 	});
 
-	const maxRowsInChat = 10;
-	if (matches.length > maxRowsInChat) {
-		const headers = ["PO Number", "PO SLA"];
-		const csvRows = matches.map((match) => [
-			match.poNumber,
-			match.poSla,
-		]);
-		const csvContent = buildCsvContent_(headers, csvRows);
-		const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-		return {
-			text: "Your spreadsheet is ready!",
-			download: {
-				filename: "sia-response-" + timestamp + ".csv",
-				content: csvContent,
-				mimeType: "text/csv",
-			},
-		};
-	}
-
-	const lines = [
-		"| PO Number | PO SLA |",
-		"| --- | --- |",
-	];
-
-	for (let i = 0; i < matches.length; i += 1) {
-		const match = matches[i];
-		lines.push("| " + match.poNumber + " | " + match.poSla + " |");
-	}
-
-	return lines.join("\n");
+	const headers = ["PO Number", "PO SLA"];
+	const csvRows = matches.map(function(match) {
+		return [match.poNumber, match.poSla];
+	});
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+	return buildTableResponse_(headers, csvRows, {
+		includeCsvDownload: true,
+		csvFilename: "sia-response-" + timestamp + ".csv",
+	});
 }
 
 function listProjectDelayedClosure(entities, parsed, context) {
@@ -375,27 +354,11 @@ function listProjectDelayedClosure(entities, parsed, context) {
 			formatLatestGrDate(match.latestGrDate, match.latestGrDateValue),
 		];
 	});
-	const csvContent = buildCsvContent_(headers, csvRows);
 	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-
-	const lines = [
-		"| Project | PO Number | Latest GR Date |",
-		"| --- | --- | --- |",
-	];
-
-	for (let i = 0; i < matches.length; i += 1) {
-		const match = matches[i];
-		lines.push("| " + match.project + " | " + match.poNumber + " | " + formatLatestGrDate(match.latestGrDate, match.latestGrDateValue) + " |");
-	}
-
-	return {
-		text: lines.join("\n"),
-		download: {
-			filename: "sia-project-delayed-closure-" + timestamp + ".csv",
-			content: csvContent,
-			mimeType: "text/csv",
-		},
-	};
+	return buildTableResponse_(headers, csvRows, {
+		includeCsvDownload: true,
+		csvFilename: "sia-project-delayed-closure-" + timestamp + ".csv",
+	});
 }
 
 function listPoVendor(entities, parsed, context) {
@@ -453,30 +416,13 @@ function listPoVendor(entities, parsed, context) {
 
 		if (matches.length === 0) return "No matching POs found.";
 
-		if (matches.length > 10) {
-			const headers = ["PO Number", "Vendor"];
-			const csvRows = matches.map(function(m) { return [m.poNumber, m.vendor]; });
-			const csvContent = buildCsvContent_(headers, csvRows);
-			const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-			return {
-				text: "Your spreadsheet is ready!",
-				download: {
-					filename: "sia-response-" + timestamp + ".csv",
-					content: csvContent,
-					mimeType: "text/csv",
-				},
-			};
-		}
-
-		const lines = [
-			"| PO Number | Vendor |",
-			"| --- | --- |",
-		];
-		for (let i = 0; i < matches.length; i += 1) {
-			const m = matches[i];
-			lines.push("| " + m.poNumber + " | " + m.vendor + " |");
-		}
-		return lines.join("\n");
+		const headers = ["PO Number", "Vendor"];
+		const csvRows = matches.map(function(m) { return [m.poNumber, m.vendor]; });
+		const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+		return buildTableResponse_(headers, csvRows, {
+			includeCsvDownload: true,
+			csvFilename: "sia-response-" + timestamp + ".csv",
+		});
 	}
 
 	// Otherwise present top candidates using full-query suggestion labels
@@ -529,27 +475,11 @@ function listPoDormant(entities, parsed, context) {
 	const csvRows = matches.map(function(match) {
 		return [match.vendor, match.poNumber];
 	});
-	const csvContent = buildCsvContent_(headers, csvRows);
 	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-
-	const lines = [
-		"| Vendor | PO Number |",
-		"| --- | --- |",
-	];
-
-	for (let i = 0; i < matches.length; i += 1) {
-		const match = matches[i];
-		lines.push("| " + match.vendor + " | " + match.poNumber + " |");
-	}
-
-	return {
-		text: lines.join("\n"),
-		download: {
-			filename: "sia-dormant-po-response-" + timestamp + ".csv",
-			content: csvContent,
-			mimeType: "text/csv",
-		},
-	};
+	return buildTableResponse_(headers, csvRows, {
+		includeCsvDownload: true,
+		csvFilename: "sia-dormant-po-response-" + timestamp + ".csv",
+	});
 }
 
 function listPoVendorRemainingBalance(entities, parsed, context) {

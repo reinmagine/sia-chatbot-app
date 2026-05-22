@@ -575,6 +575,73 @@ function buildCsvContent_(headers, rows) {
 	return lines.join("\r\n");
 }
 
+function buildMarkdownTable_(headers, rows) {
+	const headerCells = Array.isArray(headers) ? headers : [];
+	const dataRows = Array.isArray(rows) ? rows : [];
+	const lines = [];
+
+	lines.push("| " + headerCells.map(function(header) {
+		return String(header || "");
+	}).join(" | ") + " |");
+	lines.push("| " + headerCells.map(function() {
+		return "---";
+	}).join(" | ") + " |");
+
+	for (let i = 0; i < dataRows.length; i += 1) {
+		const row = Array.isArray(dataRows[i]) ? dataRows[i] : [];
+		lines.push("| " + headerCells.map(function(_, index) {
+			return String(row[index] === undefined || row[index] === null ? "" : row[index]);
+		}).join(" | ") + " |");
+	}
+
+	return lines.join("\n");
+}
+
+function buildOverflowTableRow_(columnCount, summaryText) {
+	const safeColumnCount = Math.max(1, Number(columnCount) || 0);
+	const row = [];
+	for (let i = 0; i < safeColumnCount; i += 1) {
+		row.push(i === 0 ? String(summaryText || "") : "");
+	}
+	return row;
+}
+
+function buildTableResponse_(headers, rows, options) {
+	const config = options || {};
+	const allRows = Array.isArray(rows) ? rows : [];
+	const headerCells = Array.isArray(headers) ? headers : [];
+	const maxDisplayRows = Number.isInteger(config.maxDisplayRows) ? config.maxDisplayRows : 10;
+	const includeCsvDownload = Boolean(config.includeCsvDownload);
+	const csvFilename = String(config.csvFilename || "sia-response.csv");
+	const hasOverflow = allRows.length > maxDisplayRows;
+	let visibleRows = allRows.slice(0, maxDisplayRows);
+
+	if (hasOverflow && maxDisplayRows > 0 && config.showOverflowRow !== false) {
+		const visibleDataRows = Math.max(0, maxDisplayRows - 1);
+		visibleRows = allRows.slice(0, visibleDataRows).concat([
+			buildOverflowTableRow_(headerCells.length, "+" + (allRows.length - visibleDataRows) + " more rows"),
+		]);
+	}
+
+	const tableText = buildMarkdownTable_(headerCells, visibleRows);
+	if (!hasOverflow || !includeCsvDownload) {
+		return tableText;
+	}
+
+	const csvRows = allRows.map(function(row) {
+		return Array.isArray(row) ? row : [];
+	});
+	const csvContent = buildCsvContent_(headerCells, csvRows);
+	return {
+		text: tableText,
+		download: {
+			filename: csvFilename,
+			content: csvContent,
+			mimeType: "text/csv",
+		},
+	};
+}
+
 function normalizePoSlaCellValue_(value) {
 	return normalizeDashCharacters_(String(value || ""))
 		.toLowerCase()
