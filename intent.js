@@ -131,6 +131,8 @@ const INTENTS = [
 	},
 	{
 		name: "list_po_aging",
+		intentKeywords: ["po", "purchase order"],
+		conflictKeywords: ["project", "projects"],
 		phrases: [
 			"Which POs are aging X",
 			"Which POs are aging beyond 24 months",
@@ -155,6 +157,8 @@ const INTENTS = [
 	},
 	{
 		name: "list_project_delayed_closure",
+		intentKeywords: ["project", "projects"],
+		conflictKeywords: ["po", "purchase order"],
 		phrases: [
 			"Which projects have delayed PO closure",
 			"List all high risk projects",
@@ -199,6 +203,8 @@ const INTENTS = [
 	},
 	{
 		name: "list_po_vendor_remaining_balance",
+		intentKeywords: ["po", "purchase order"],
+		conflictKeywords: ["vendor", "vendors"],
 		phrases: [
 			"List all POs with highest remaining balance",
 			"Which PO have the highest unGR'd balance",
@@ -211,6 +217,8 @@ const INTENTS = [
 	},
 	{
 		name: "list_vendor_remaining_balance",
+		intentKeywords: ["vendor", "vendors"],
+		conflictKeywords: ["po", "purchase order"],
 		phrases: [
 			"show me top vendors by remaining balance",
 			"list top vendors by remaining balance",

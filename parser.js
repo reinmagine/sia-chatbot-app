@@ -235,9 +235,69 @@ function scoreIntentAgainstInputVariants(inputVariants, phrases) {
 	return { score: bestScore, phrase: bestPhrase };
 }
 
-function buildIntentSuggestion(intent, inputVariants, poNumber) {
+function buildKeywordTokenSet(normalizedText) {
+	const tokens = tokenize(normalizeText(normalizedText));
+	const set = new Set(tokens);
+
+	tokens.forEach((token) => {
+		if (token.length > 2 && token.endsWith("s")) {
+			set.add(token.slice(0, -1));
+		}
+	});
+
+	return set;
+}
+
+function textContainsKeyword(normalizedText, keyword, keywordTokenSet) {
+	const term = normalizeText(keyword);
+	if (!term) {
+		return false;
+	}
+
+	if (term.indexOf(" ") !== -1) {
+		return normalizeText(normalizedText).indexOf(term) !== -1;
+	}
+
+	return keywordTokenSet.has(term);
+}
+
+function scoreIntentSignals(normalizedText, intent) {
+	const text = normalizeText(normalizedText);
+	if (!text || !intent) {
+		return 0;
+	}
+
+	const keywordTokenSet = buildKeywordTokenSet(text);
+
+	const scoreTerms = (terms, weight) => {
+		let total = 0;
+		(terms || []).forEach((term) => {
+			if (textContainsKeyword(text, term, keywordTokenSet)) {
+				total += weight;
+			}
+		});
+		return total;
+	};
+
+	const boost = scoreTerms(intent.intentKeywords, 0.12);
+	const penalty = scoreTerms(intent.conflictKeywords, 0.16);
+	return boost - penalty;
+}
+
+function scoreIntentCandidate(intent, inputVariants, normalizedText) {
+	const phraseScore = scoreIntentAgainstInputVariants(inputVariants, intent && intent.phrases);
+	const signalScore = scoreIntentSignals(normalizedText, intent);
+	const combinedScore = Math.max(0, Math.min(1, phraseScore.score + signalScore));
+
+	return {
+		score: combinedScore,
+		phrase: phraseScore.phrase,
+	};
+}
+
+function buildIntentSuggestion(intent, inputVariants, normalizedText, poNumber) {
 	if (!intent || !intent.name) return null;
-	const best = scoreIntentAgainstInputVariants(inputVariants, intent.phrases);
+	const best = scoreIntentCandidate(intent, inputVariants, normalizedText);
 	if (!best.phrase) return null;
 
 	return {
@@ -285,7 +345,7 @@ function parseInput(userText) {
 	const suggestions = [];
 
 	INTENTS.forEach((intent) => {
-		const bestForIntent = scoreIntentAgainstInputVariants(inputVariants, intent.phrases);
+		const bestForIntent = scoreIntentCandidate(intent, inputVariants, normalized);
 		if (bestForIntent.score > bestScore) {
 			bestScore = bestForIntent.score;
 			bestIntent = intent;
@@ -295,6 +355,7 @@ function parseInput(userText) {
 		const suggestion = buildIntentSuggestion(
 			intent,
 			inputVariants,
+			normalized,
 			entities.PO_NUMBER,
 		);
 		if (suggestion) {
