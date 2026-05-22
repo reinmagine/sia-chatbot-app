@@ -154,6 +154,22 @@ const INTENTS = [
 		handler: "listPoAging"
 	},
 	{
+		name: "list_project_delayed_closure",
+		phrases: [
+			"Which projects have delayed PO closure",
+			"List all high risk projects",
+			"Show me all projects aged >2 years",
+			"List all delayed closure projects",
+			"Which projects have delayed closure",
+			"Show delayed PO closure projects",
+			"List projects with POs older than 24 months",
+			"Which projects have high risk POs",
+			"Show me all high risk projects",
+		],
+		responseType: "list",
+		handler: "listProjectDelayedClosure"
+	},
+	{
 		name: "list_po_vendor",
 		phrases: [
 			"List all POs from X",
@@ -166,6 +182,20 @@ const INTENTS = [
 		requiredEntities: ["VENDOR"],
 		responseType: "list",
 		handler: "listPoVendor"
+	},
+	{
+		name: "list_po_dormant",
+		phrases: [
+			"Which POs are dormant",
+			"Are there POs that have no activity",
+			"List all dormant POs",
+			"Show me dormant POs",
+			"List POs with no activity",
+			"Which POs have no GR activity",
+			"Show POs with no activity",
+		],
+		responseType: "list",
+		handler: "listPoDormant"
 	},
 	{
 		name: "list_po_vendor_remaining_balance",

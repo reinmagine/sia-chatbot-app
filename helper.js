@@ -730,7 +730,9 @@ function getGeminiResponse(userText, options) {
 		checkPoTotalValue: checkPoTotalValue,
 		checkPoAging: checkPoAging,
 		listPoAging: listPoAging,
+		listProjectDelayedClosure: listProjectDelayedClosure,
 		listPoVendor: listPoVendor,
+		listPoDormant: listPoDormant,
 		listPoVendorRemainingBalance: listPoVendorRemainingBalance,
 		listVendorRemainingBalance: listVendorRemainingBalance,
 	};
@@ -1082,6 +1084,7 @@ const DATASET_SPECS = {
 		fields: {
 			vendor: { match: "exact", value: "Vendor’s Name" },
 			division: { match: "exact", value: "Division" },
+			project: { match: "exact", value: "Project" },
 			poNumber: { match: "exact", value: "PO Number" },
 			poDate: { match: "exact", value: "PO Date" },
 			poSla: { match: "exact", value: "PO SLA" },
@@ -1097,6 +1100,7 @@ const DATASET_SPECS = {
 		fieldPropertyNames: {
 			vendor: "vendorColumn",
 			division: "divisionColumn",
+			project: "projectColumn",
 			poNumber: "poColumn",
 			poDate: "poDateColumn",
 			poSla: "poSlaColumn",

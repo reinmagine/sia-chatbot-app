@@ -2,7 +2,7 @@
 
 - intent-facing data lookup functions
 - only the functions directly called by intent routing live here
-- ex: checkPoStatus, checkPoGrStatus, checkPoRemainingBalance, checkPoLatestGrDate, checkPoTotalValue, checkPoAging, listPoAging
+- ex: checkPoStatus, checkPoGrStatus, checkPoRemainingBalance, checkPoLatestGrDate, checkPoTotalValue, checkPoAging, listPoAging, listPoDormant
 
 */
 function checkPoStatus(entities, parsed, context) { // done
@@ -252,6 +252,152 @@ function listPoAging(entities, parsed, context) {
 	return lines.join("\n");
 }
 
+function listProjectDelayedClosure(entities, parsed, context) {
+	const dataset = getCommschedRows_(["project", "poNumber", "poSla", "latestGrDate"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest COMMSCHED sheet.";
+	}
+
+	const selectedByProject = {};
+
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const projectName = String(row.values && row.values.project ? row.values.project : "").trim();
+		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+		const poSlaValue = String(row.values && row.values.poSla ? row.values.poSla : "").trim();
+		if (!projectName || !poNumber || !poSlaValue) {
+			continue;
+		}
+
+		const bucketInfo = getPoSlaBucketInfo_(poSlaValue);
+		if (!bucketInfo || bucketInfo.cellValue !== "e. >24 months") {
+			continue;
+		}
+
+		const latestGrDateRaw = row.rawValues && Object.prototype.hasOwnProperty.call(row.rawValues, "latestGrDate")
+			? row.rawValues.latestGrDate
+			: "";
+		const parsedLatestGrDate = parseDateValue_(latestGrDateRaw);
+		const existing = selectedByProject[projectName];
+		if (!existing) {
+			selectedByProject[projectName] = {
+				project: projectName,
+				poNumber: poNumber,
+				latestGrDate: parsedLatestGrDate,
+				latestGrDateValue: String(row.values && row.values.latestGrDate ? row.values.latestGrDate : "").trim(),
+				rowNumber: row.rowNumber || 0,
+			};
+			continue;
+		}
+
+		const existingHasDate = existing.latestGrDate instanceof Date && !isNaN(existing.latestGrDate.getTime());
+		const candidateHasDate = parsedLatestGrDate instanceof Date && !isNaN(parsedLatestGrDate.getTime());
+
+		let shouldReplace = false;
+		if (!existingHasDate && candidateHasDate) {
+			shouldReplace = true;
+		} else if (existingHasDate && candidateHasDate) {
+			const existingTime = existing.latestGrDate.getTime();
+			const candidateTime = parsedLatestGrDate.getTime();
+			if (candidateTime < existingTime) {
+				shouldReplace = true;
+			} else if (candidateTime === existingTime) {
+				const existingPo = String(existing.poNumber || "").trim();
+				shouldReplace = String(poNumber).localeCompare(existingPo) < 0;
+			}
+		} else if (!existingHasDate && !candidateHasDate) {
+			const existingRowNumber = Number(existing.rowNumber || 0);
+			const candidateRowNumber = Number(row.rowNumber || 0);
+			if (candidateRowNumber < existingRowNumber) {
+				shouldReplace = true;
+			}
+		}
+
+		if (shouldReplace) {
+			selectedByProject[projectName] = {
+				project: projectName,
+				poNumber: poNumber,
+				latestGrDate: parsedLatestGrDate,
+				latestGrDateValue: String(row.values && row.values.latestGrDate ? row.values.latestGrDate : "").trim(),
+				rowNumber: row.rowNumber || 0,
+			};
+		}
+	}
+
+	const matches = Object.keys(selectedByProject).map(function(projectName) {
+		const item = selectedByProject[projectName];
+		return {
+			project: item.project,
+			poNumber: item.poNumber,
+			latestGrDate: item.latestGrDate instanceof Date && !isNaN(item.latestGrDate.getTime())
+				? item.latestGrDate
+				: null,
+			latestGrDateValue: item.latestGrDateValue || "",
+			rowNumber: item.rowNumber || 0,
+		};
+	});
+
+	if (matches.length === 0) {
+		return "No delayed closure projects found.";
+	}
+
+	matches.sort(function(a, b) {
+		const aHasDate = a.latestGrDate instanceof Date && !isNaN(a.latestGrDate.getTime());
+		const bHasDate = b.latestGrDate instanceof Date && !isNaN(b.latestGrDate.getTime());
+		if (aHasDate && bHasDate) {
+			const diff = a.latestGrDate.getTime() - b.latestGrDate.getTime();
+			if (diff !== 0) {
+				return diff;
+			}
+		}
+		if (aHasDate !== bHasDate) {
+			return aHasDate ? -1 : 1;
+		}
+		const projectCompare = String(a.project || "").localeCompare(String(b.project || ""));
+		if (projectCompare !== 0) {
+			return projectCompare;
+		}
+		return String(a.poNumber || "").localeCompare(String(b.poNumber || ""));
+	});
+
+	function formatLatestGrDate(value, fallback) {
+		if (value instanceof Date && !isNaN(value.getTime())) {
+			return Utilities.formatDate(value, Session.getScriptTimeZone(), "MMM d, yyyy");
+		}
+		return String(fallback || "").trim();
+	}
+
+	const headers = ["Project", "PO Number", "Latest GR Date"];
+	const csvRows = matches.map(function(match) {
+		return [
+			match.project,
+			match.poNumber,
+			formatLatestGrDate(match.latestGrDate, match.latestGrDateValue),
+		];
+	});
+	const csvContent = buildCsvContent_(headers, csvRows);
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+
+	const lines = [
+		"| Project | PO Number | Latest GR Date |",
+		"| --- | --- | --- |",
+	];
+
+	for (let i = 0; i < matches.length; i += 1) {
+		const match = matches[i];
+		lines.push("| " + match.project + " | " + match.poNumber + " | " + formatLatestGrDate(match.latestGrDate, match.latestGrDateValue) + " |");
+	}
+
+	return {
+		text: lines.join("\n"),
+		download: {
+			filename: "sia-project-delayed-closure-" + timestamp + ".csv",
+			content: csvContent,
+			mimeType: "text/csv",
+		},
+	};
+}
+
 function listPoVendor(entities, parsed, context) {
 	const rawVendor = String(entities.VENDOR || "").trim();
 	if (!rawVendor) {
@@ -336,6 +482,74 @@ function listPoVendor(entities, parsed, context) {
 	// Otherwise present top candidates using full-query suggestion labels
 	const suggestions = top.map(function(t) { return { id: t.vendor, label: buildFullQueryLabel('list_po_vendor', t.vendor) }; });
 	return showDidYouMean(suggestions);
+}
+
+function listPoDormant(entities, parsed, context) {
+	const dataset = getCommschedRows_(["vendor", "poNumber", "goodsReceiptAmount"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest COMMSCHED sheet.";
+	}
+
+	const matches = [];
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+		const goodsReceiptValue = String(row.values && row.values.goodsReceiptAmount ? row.values.goodsReceiptAmount : "").trim();
+
+		if (!vendorName || !poNumber) {
+			continue;
+		}
+
+		if (!goodsReceiptValue) {
+			matches.push({ vendor: vendorName, poNumber: poNumber });
+			continue;
+		}
+
+		const parsedAmount = parseFloat(goodsReceiptValue.replace(/[^0-9.\-]/g, ""));
+		if (!isNaN(parsedAmount) && parsedAmount === 0) {
+			matches.push({ vendor: vendorName, poNumber: poNumber });
+		}
+	}
+
+	if (matches.length === 0) {
+		return "No dormant POs found.";
+	}
+
+	matches.sort(function(a, b) {
+		const vendorCompare = String(a.vendor || "").localeCompare(String(b.vendor || ""));
+		if (vendorCompare !== 0) {
+			return vendorCompare;
+		}
+
+		return String(a.poNumber || "").localeCompare(String(b.poNumber || ""));
+	});
+
+	const headers = ["Vendor", "PO Number"];
+	const csvRows = matches.map(function(match) {
+		return [match.vendor, match.poNumber];
+	});
+	const csvContent = buildCsvContent_(headers, csvRows);
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+
+	const lines = [
+		"| Vendor | PO Number |",
+		"| --- | --- |",
+	];
+
+	for (let i = 0; i < matches.length; i += 1) {
+		const match = matches[i];
+		lines.push("| " + match.vendor + " | " + match.poNumber + " |");
+	}
+
+	return {
+		text: lines.join("\n"),
+		download: {
+			filename: "sia-dormant-po-response-" + timestamp + ".csv",
+			content: csvContent,
+			mimeType: "text/csv",
+		},
+	};
 }
 
 function listPoVendorRemainingBalance(entities, parsed, context) {
