@@ -52,13 +52,13 @@
       }
     </style>
   </head>
-  <body class="bg-gray-100 m-0 p-0 h-[100dvh] flex flex-col">
+  <body class="bg-white md:bg-gray-100 m-0 p-0 h-[100dvh] flex flex-col w-full md:w-auto">
     <script id="user-context-data" type="application/json">
       <?!= userContextJson ?>
     </script>
     <div
       id="root"
-      class="h-full w-full max-w-4xl mx-auto flex flex-col bg-white shadow-xl overflow-hidden"
+      class="h-full w-full max-w-full md:max-w-4xl mx-auto flex flex-col bg-white md:shadow-xl overflow-hidden"
     ></div>
 
     <script type="text/babel">
@@ -94,10 +94,6 @@
       };
 
       const QUICK = [
-        "Shipping",
-        "Tracking",
-        "Returns",
-        "Ordering",
         "PO / GR Status",
         "Billing",
         "Support",
@@ -147,12 +143,15 @@
         return "neutral";
       };
 
-      function LogoMark() {
+      function LogoMark({ className }) {
         const [hasError, setHasError] = useState(false);
+
+        const imgClass = className || "w-12 h-12 rounded-xl block shadow-sm";
+        const fallbackClass = className || "w-12 h-12 rounded-xl block text-2xl";
 
         if (hasError) {
           return (
-            <div className="block w-12 h-12 shrink-0 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-2xl">
+            <div className={`shrink-0 bg-indigo-600 text-white flex items-center justify-center font-bold ${fallbackClass}`}>
               S
             </div>
           );
@@ -162,7 +161,7 @@
           <img
             src={LOGO_IMAGE_URL}
             alt="SIA logo"
-            className="block w-12 h-12 shrink-0 rounded-xl object-cover"
+            className={`shrink-0 object-cover ${imgClass}`}
             onError={() => setHasError(true)}
           />
         );
@@ -487,6 +486,7 @@
       }
 
       function ChatApp() {
+        const [showSplash, setShowSplash] = useState(true);
         const [hasStarted, setHasStarted] = useState(false);
         const [showResetConfirm, setShowResetConfirm] = useState(false);
         const [intentSuggestions, setIntentSuggestions] = useState(null);
@@ -495,6 +495,71 @@
         const [isTyping, setIsTyping] = useState(false);
         const messagesEndRef = useRef(null);
         const inputRef = useRef(null);
+
+        // --- Local Small Talk Handling ---
+        const detectSmallTalk = (text) => {
+          const t = String(text || "").toLowerCase().trim();
+          // Blacklist query-like keywords
+          if (t.match(/\b(po|gr|status|list|show|check|aging|risk|billing|inventory)\b/)) return false;
+          
+          // Whitelists
+          if (t.match(/\b(hi|hello|hey|yo|howdy|good morning|good afternoon|good evening)\b/)) return true;
+          if (t.match(/\b(thank(s|u)?|thx|appreciate|grateful)\b/)) return true;
+          if (t.match(/\b(bye|goodbye|see you|later|cya|talk soon)\b/)) return true;
+          if (t.match(/^(yes|yep|yup|sure|ok|okay|cool|awesome|perfect|absolutely)$/)) return true;
+          if (t.match(/^(no|nope|nah|not really)$/)) return true;
+          if (t.match(/\b(how are (you|things)|how'?s it going|what'?s up)\b/)) return true;
+          
+          return false;
+        };
+
+        const generateSmallTalkReply = (text) => {
+          const t = String(text || "").toLowerCase();
+          let response = "Got it!";
+          let exp = "wink";
+
+          if (t.match(/\b(hi|hello|hey|yo|howdy|good)\b/)) {
+            response = `Hi there! 👋🏻 I'm SIA. What can I help you with today?`;
+            exp = "excited";
+          } else if (t.match(/\b(thank(s|u)?|thx|appreciate|grateful)\b/)) {
+            response = "You're very welcome! I'm happy to help. 😊";
+            exp = "loving";
+          } else if (t.match(/\b(how are (you|things)|how'?s it going|what'?s up)\b/)) {
+            response = "I'm doing well, thanks for asking! Ready to assist you.";
+            exp = "neutral";
+          } else if (t.match(/\b(bye|goodbye|see you|later|cya)\b/)) {
+            response = "Goodbye! Feel free to come back anytime you need help. 👋🏻";
+            exp = "neutral";
+          } else if (t.match(/^(yes|yep|yup|sure|ok|okay|cool|awesome|perfect|absolutely)$/)) {
+            response = "Great!";
+            exp = "confirm";
+          } else if (t.match(/^(no|nope|nah|not really)$/)) {
+            response = "No problem! Let me know if you need anything else.";
+            exp = "neutral";
+          }
+
+          return {
+            id: "bot-" + Date.now(),
+            who: "bot",
+            text: response,
+            expression: exp,
+            ts: new Date().toISOString()
+          };
+        };
+        // ---------------------------------
+
+        useEffect(() => {
+          const splashShown = sessionStorage.getItem("sia_splash_shown");
+          if (splashShown) {
+            setShowSplash(false);
+          } else {
+            const timer = setTimeout(() => {
+              setShowSplash(false);
+              sessionStorage.setItem("sia_splash_shown", "true");
+            }, 2500);
+            return () => clearTimeout(timer);
+          }
+        }, []);
 
         // Preload common expression images
         useEffect(() => {
@@ -596,6 +661,12 @@
         // Do not fall back to canned placeholder replies when offline.
         const sendToServer = (text, triggerSource = "query") => {
           return new Promise((resolve) => {
+            // Local small talk interceptor
+            if (triggerSource === "query" && detectSmallTalk(text)) {
+              resolve(generateSmallTalkReply(text));
+              return;
+            }
+
             if (window.google && google.script && google.script.run) {
               try {
                 google.script.run
@@ -766,6 +837,17 @@
           setInputValue("");
         };
 
+        if (showSplash) {
+          return (
+            <div className="h-full w-full flex flex-col items-center justify-center bg-white transition-opacity duration-500">
+              <div className="flex flex-col items-center animate-in fade-in duration-700">
+                <LogoMark className="w-24 h-24 rounded-2xl shadow-lg" />
+                <h1 className="mt-6 text-3xl font-bold text-indigo-900 tracking-tight">SIA</h1>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div className="flex flex-col h-full w-full">
             {/* Modals & Dialogs */}
@@ -798,7 +880,7 @@
             )}
 
             {/* Header */}
-            <header className="flex items-center justify-between p-4 border-b bg-white shrink-0 shadow-sm z-10 w-full">
+            <header className="flex items-center justify-between p-4 md:border-b bg-white shrink-0 md:shadow-sm z-10 w-full">
               <div className="flex items-center gap-3">
                 <LogoMark />
                 <div>
