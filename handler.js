@@ -645,3 +645,230 @@ function listVendorRemainingBalance(entities, parsed, context) {
 
 	return lines.join("\n");
 }
+
+/* Helpers for unGR'd aggregation */
+function parseDisplayAmount(raw) {
+	if (raw === undefined || raw === null) return NaN;
+	if (typeof raw === 'number') return Number(raw);
+	let s = String(raw || "").trim();
+	if (!s) return NaN;
+	// Parentheses indicate negative values e.g. (1,234.56)
+	let negative = false;
+	if (/^\(.*\)$/.test(s)) {
+		negative = true;
+		s = s.replace(/^\(|\)$/g, "");
+	}
+	// Remove currency symbols, letters and thousands separators but keep dot and minus
+	s = s.replace(/[^0-9.\-]/g, "");
+	const n = parseFloat(s);
+	if (isNaN(n)) return NaN;
+	return negative ? -Math.abs(n) : n;
+}
+
+function formatMoney(n) {
+	const fixed = Number(n || 0).toFixed(2);
+	const parts = fixed.split('.');
+	parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+	return parts.join('.');
+}
+
+function formatCount(n) {
+	const value = Math.max(0, Math.floor(Number(n || 0)));
+	return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function checkTotalUnGrdVendor(entities, parsed, context) {
+	const rawVendor = String(entities.VENDOR || '').trim();
+	if (!rawVendor) return getMissingEntityMessage('VENDOR');
+
+	const dataset = getCommschedRows_(['vendor','currency','remainingBalance'], context);
+	if (!dataset || !dataset.rows) return 'Cannot find the latest COMMSCHED sheet.';
+
+	// Collect unique vendor names
+	const vendorSet = {};
+	for (let i=0;i<dataset.rows.length;i++){
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : '').trim();
+		if (vendorName) vendorSet[vendorName] = true;
+	}
+	const vendorList = Object.keys(vendorSet);
+	const queryNorm = normalizeText(rawVendor || '');
+
+	function scoreCandidate(candidate) {
+		const candidateNorm = normalizeText(candidate || '');
+		if (!candidateNorm) return 0;
+		if (candidateNorm === queryNorm) return 1;
+		const tokensA = tokenize(queryNorm);
+		const tokensB = tokenize(candidateNorm);
+		const jaccard = jaccardSimilarity(tokensA, tokensB);
+		const levenshtein = normalizedLevenshteinSimilarity(queryNorm, candidateNorm);
+		return jaccard * 0.6 + levenshtein * 0.4;
+	}
+
+	const scored = vendorList.map(function(v){ return { vendor: v, score: scoreCandidate(v) }; });
+	scored.sort(function(a,b){ return b.score - a.score; });
+	if (scored.length === 0) return 'No matching vendors found.';
+
+	const top = scored.slice(0,3);
+	if (top[0].score < 0.9) {
+		const suggestions = top.map(function(t){ return { id: t.vendor, label: buildFullQueryLabel('check_total_ungrd_vendor', t.vendor), entityType: 'vendor' }; });
+		return showDidYouMean(suggestions);
+	}
+
+	const chosen = top[0].vendor;
+	const totalsByCurrency = {};
+	let totalPos = 0;
+	let totalRows = 0;
+
+	for (let i=0;i<dataset.rows.length;i++){
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : '').trim();
+		if (!vendorName || vendorName !== chosen) continue;
+		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
+		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
+		const num = parseDisplayAmount(rawAmt);
+		if (isNaN(num)) continue;
+		totalsByCurrency[currency] = totalsByCurrency[currency] || { total: 0, posCount: 0, rows: 0 };
+		totalsByCurrency[currency].total += num;
+		totalsByCurrency[currency].rows += 1;
+		if (num > 0) totalsByCurrency[currency].posCount += 1;
+		totalRows += 1;
+		if (num > 0) totalPos += 1;
+	}
+
+	if (totalRows === 0) return 'No matching POs found.';
+
+	const currencyParts = Object.keys(totalsByCurrency).map(function(curr){
+		const info = totalsByCurrency[curr];
+		return (curr ? curr + ' ' : '') + formatMoney(info.total);
+	});
+
+	const formattedTotals = currencyParts.join(', ');
+	return 'Vendor <b>' + chosen + '</b> has a total unGR\'d value of ' + formattedTotals + ' from ' + formatCount(totalPos) + ' to be GR\'d POs (out of ' + formatCount(totalRows) + ').';
+}
+
+function listTotalUnGrdVendor(entities, parsed, context) {
+	const dataset = getCommschedRows_(['vendor','currency','remainingBalance'], context);
+	if (!dataset || !dataset.rows) return 'Cannot find the latest COMMSCHED sheet.';
+
+	const vendorCurrencyMap = {};
+	for (let i=0;i<dataset.rows.length;i++){
+		const row = dataset.rows[i] || {};
+		const vendor = String(row.values && row.values.vendor ? row.values.vendor : '').trim();
+		if (!vendor) continue;
+		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
+		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
+		const num = parseDisplayAmount(rawAmt);
+		if (isNaN(num)) continue;
+		const key = vendor + '||' + currency;
+		vendorCurrencyMap[key] = vendorCurrencyMap[key] || { vendor: vendor, currency: currency, total: 0, posCount: 0, rows: 0 };
+		vendorCurrencyMap[key].total += num;
+		vendorCurrencyMap[key].rows += 1;
+		if (num > 0) vendorCurrencyMap[key].posCount += 1;
+	}
+
+	const entries = Object.keys(vendorCurrencyMap).map(function(k){
+		return vendorCurrencyMap[k];
+	});
+
+	if (entries.length === 0) return 'No matching vendors found.';
+
+	// sort by total desc (numeric)
+	entries.sort(function(a,b){ return b.total - a.total; });
+
+	const rows = entries.map(function(v) {
+		const formattedTotal = (v.currency ? v.currency + ' ' : '') + formatMoney(v.total);
+		return [v.vendor, formattedTotal, formatCount(v.posCount), formatCount(v.rows)];
+	});
+
+	const headers = ['Vendor','Total unGR\'d','Remaining POs','Total POs'];
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+	return buildTableResponse_(headers, rows, { includeCsvDownload: true, csvFilename: 'sia-ungrd-vendor-' + timestamp + '.csv' });
+}
+
+function checkTotalUnGrdDivision(entities, parsed, context) {
+	const rawDivision = String(entities.DIVISION || '').trim();
+	if (!rawDivision) return getMissingEntityMessage('DIVISION');
+
+	const resolved = resolveCanonicalDivision_(rawDivision || '');
+	if (!resolved.matched) {
+		// suggest top canonical divisions by similarity
+		const candidates = CANONICAL_DIVISIONS_.map(function(d){ return { id: d, score: scoreDivisionSimilarity_(rawDivision, d) }; });
+		candidates.sort(function(a,b){ return b.score - a.score; });
+		const top = candidates.slice(0,3).map(function(c){ return { id: c.id, label: buildFullQueryLabel('check_total_ungrd_division', c.id), entityType: 'division' }; });
+		return showDidYouMean(top);
+	}
+
+	const dataset = getCommschedRows_(['division','currency','remainingBalance'], context);
+	if (!dataset || !dataset.rows) return 'Cannot find the latest COMMSCHED sheet.';
+
+	const totalsByCurrency = {};
+	let totalPos = 0;
+	let totalRows = 0;
+
+	for (let i=0;i<dataset.rows.length;i++){
+		const row = dataset.rows[i] || {};
+		const rowDivision = String(row.values && row.values.division ? row.values.division : '').trim();
+		if (!rowDivision) continue;
+		const resolvedRow = resolveCanonicalDivision_(rowDivision);
+		if (!resolvedRow.matched || resolvedRow.canonicalDivision !== resolved.canonicalDivision) continue;
+		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
+		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
+		const num = parseDisplayAmount(rawAmt);
+		if (isNaN(num)) continue;
+		totalsByCurrency[currency] = totalsByCurrency[currency] || { total: 0, posCount: 0, rows: 0 };
+		totalsByCurrency[currency].total += num;
+		totalsByCurrency[currency].rows += 1;
+		if (num > 0) totalsByCurrency[currency].posCount += 1;
+		totalRows += 1;
+		if (num > 0) totalPos += 1;
+	}
+
+	if (totalRows === 0) return 'No matching POs found.';
+
+	const currencyParts = Object.keys(totalsByCurrency).map(function(curr){
+		const info = totalsByCurrency[curr];
+		return (curr ? curr + ' ' : '') + formatMoney(info.total);
+	});
+	const formattedTotals = currencyParts.join(', ');
+	return 'Division <b>' + resolved.canonicalDivision + '</b> has a total unGR\'d value of ' + formattedTotals + ' from ' + formatCount(totalPos) + ' to be GR\'d POs (out of ' + formatCount(totalRows) + ').';
+}
+
+function listTotalUnGrdDivision(entities, parsed, context) {
+	const dataset = getCommschedRows_(['division','currency','remainingBalance'], context);
+	if (!dataset || !dataset.rows) return 'Cannot find the latest COMMSCHED sheet.';
+
+	const groupMap = {};
+	for (let i=0;i<dataset.rows.length;i++){
+		const row = dataset.rows[i] || {};
+		const divisionRaw = String(row.values && row.values.division ? row.values.division : '').trim();
+		if (!divisionRaw) continue;
+		const resolved = resolveCanonicalDivision_(divisionRaw);
+		if (!resolved.matched) continue;
+		const division = resolved.canonicalDivision;
+		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
+		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
+		const num = parseDisplayAmount(rawAmt);
+		if (isNaN(num)) continue;
+		const key = division + '||' + currency;
+		groupMap[key] = groupMap[key] || { division: division, currency: currency, total: 0, posCount: 0, rows: 0 };
+		groupMap[key].total += num;
+		groupMap[key].rows += 1;
+		if (num > 0) groupMap[key].posCount += 1;
+	}
+
+	const entries = Object.keys(groupMap).map(function(k){ return groupMap[k]; });
+
+	if (entries.length === 0) return 'No matching divisions found.';
+
+	entries.sort(function(a,b){ return b.total - a.total; });
+
+	const rows = entries.map(function(v) {
+		const formattedTotal = (v.currency ? v.currency + ' ' : '') + formatMoney(v.total);
+		return [v.division, formattedTotal, formatCount(v.posCount), formatCount(v.rows)];
+	});
+
+	const headers = ['Division','Total unGR\'d','Remaining POs','Total POs'];
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+	return buildTableResponse_(headers, rows, { includeCsvDownload: true, csvFilename: 'sia-ungrd-division-' + timestamp + '.csv' });
+}

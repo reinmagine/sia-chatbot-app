@@ -125,7 +125,22 @@ function extractEntitiesFromText(userText) {
 	const vendorRegex = /\b(?:from|for)\s+([A-Za-z0-9&.,'()\-\/\s]{2,60})/i;
 	const vendorM = rawText.match(vendorRegex);
 	if (vendorM && vendorM[1]) {
-		vendorMatches.push(String(vendorM[1]).trim());
+		const vendorCandidate = String(vendorM[1]).trim().replace(/\b(?:vendor|vendors)\b$/i, "").trim();
+		if (vendorCandidate) {
+			vendorMatches.push(vendorCandidate);
+		}
+	}
+
+	// division capture: phrases like "for shared services division" or "in Shared Services"
+	const divisionMatches = [];
+	const divisionRegex = /\b(?:for|in|from)\s+([A-Za-z0-9&.,'()\-\/\s]{2,60})\s*(?:division)?\b/i;
+	const divisionM = rawText.match(divisionRegex);
+	if (divisionM && divisionM[1]) {
+		// Heuristic: if the captured phrase contains words like 'vendor' or 'po ' it's likely not a division
+		const candidate = String(divisionM[1]).trim().replace(/^\bdivision\b\s*/i, "").replace(/\bdivision\b$/i, "").trim();
+		if (candidate && !/\bpo\b|vendor|purchase order/i.test(candidate)) {
+			divisionMatches.push(candidate);
+		}
 	}
 	const dateMatches =
 		rawText.match(/\b(?:0?[1-9]|1[0-2])[\/](?:0?[1-9]|[12]\d|3[01])[\/](?:19|20)\d{2}\b/g) ||
@@ -137,6 +152,7 @@ function extractEntitiesFromText(userText) {
 	return {
 		PO_NUMBER: poMatches,
 		VENDOR: vendorMatches,
+		DIVISION: divisionMatches,
 		DATE: dateMatches,
 		YEAR: yearMatches,
 		AGE_FILTER: ageFilterMatches,
@@ -164,6 +180,7 @@ function replaceEntityValuesForMatching(normalizedText, entityMatches) {
 	(entityMatches.AGE_FILTER || []).forEach((value) => replaceMatch("AGE_FILTER", value));
 	(entityMatches.PO_NUMBER || []).forEach((value) => replaceMatch("PO_NUMBER", value));
 	(entityMatches.VENDOR || []).forEach((value) => replaceMatch("VENDOR", value));
+	(entityMatches.DIVISION || []).forEach((value) => replaceMatch("DIVISION", value));
 	(entityMatches.YEAR || []).forEach((value) => replaceMatch("YEAR", value));
 
 	return output;

@@ -344,12 +344,12 @@
                 {suggestions.map((intent, i) => (
                   <button
                     key={intent.id}
-                    onClick={() => onSelectSuggestion(intent.label)}
+                    onClick={() => onSelectSuggestion(intent)}
                     className="flex items-center justify-between w-full text-left p-4 rounded-2xl border border-indigo-50 bg-indigo-50/20 hover:bg-indigo-50/50 hover:border-indigo-100 transition-all group active:scale-[0.99]"
                   >
                     <span className="text-[15px] font-semibold text-indigo-900 flex items-center gap-3">
                       <span className="text-indigo-300 font-bold min-w-[24px]">{i + 1}.</span>
-                      {intent.label}
+                      <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(intent.label || intent.displayText || "") }} />
                     </span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4 text-indigo-300 group-hover:translate-x-1 transition-transform">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
@@ -491,6 +491,7 @@
         const [showResetConfirm, setShowResetConfirm] = useState(false);
         const [intentSuggestions, setIntentSuggestions] = useState(null);
         const [pendingIntent, setPendingIntent] = useState(null); // short-lived pending intent for slot-filling
+        const [pendingUnGrdEntityType, setPendingUnGrdEntityType] = useState("");
         const [messages, setMessages] = useState([]);
         const [inputValue, setInputValue] = useState("");
         const [isTyping, setIsTyping] = useState(false);
@@ -660,7 +661,7 @@
 
         // Hook for Apps Script if deployed there
         // Do not fall back to canned placeholder replies when offline.
-        const sendToServer = (text, triggerSource = "query") => {
+        const sendToServer = (text, triggerSource = "query", confirmedUnGrdEntityType = "") => {
           return new Promise((resolve) => {
             // Local small talk interceptor
             if (triggerSource === "query" && detectSmallTalk(text)) {
@@ -673,7 +674,7 @@
                 google.script.run
                   .withSuccessHandler(resolve)
                   .withFailureHandler(() => resolve(null))
-                  .getGeminiResponse(text, { triggerSource });
+                    .getGeminiResponse(text, { triggerSource, confirmedUnGrdEntityType });
                 return;
               } catch (e) {
                 resolve(null);
@@ -718,7 +719,10 @@
         };
 
         const handleSend = async (text, triggerSource = "query") => {
-          const raw = String(text || "").trim();
+          const isSuggestionPayload = text && typeof text === "object" && !Array.isArray(text);
+          const raw = isSuggestionPayload
+            ? String(text.displayText || text.label || text.query || "").trim()
+            : String(text || "").trim();
           if (!raw) return;
           const startedAt = Date.now();
 
@@ -739,7 +743,9 @@
 
           // If we have a short-lived pending intent and the user replied with a bare PO number,
           // combine it into the original intent for sending, but still display the bare value.
-          let sendText = raw;
+          let sendText = isSuggestionPayload && text.query ? String(text.query || "").trim() : raw;
+          const clickedUnGrdEntityType = isSuggestionPayload && text.entityType ? String(text.entityType || "").trim().toLowerCase() : "";
+          const effectiveUnGrdEntityType = clickedUnGrdEntityType || pendingUnGrdEntityType;
           try {
             if (pendingIntent) {
               if (pendingIntent.missingEntity === "PO_NUMBER" && /^\d{10}$/.test(raw)) {
@@ -771,6 +777,10 @@
                 }
                 setPendingIntent(null);
               }
+            }
+
+            if (clickedUnGrdEntityType === "vendor" || clickedUnGrdEntityType === "division") {
+              setPendingUnGrdEntityType(clickedUnGrdEntityType);
             }
           } catch (e) {
             sendText = raw;
@@ -806,7 +816,7 @@
           await new Promise((r) => setTimeout(r, delay));
 
           try {
-            const resp = await sendToServer(sendText, triggerSource);
+            const resp = await sendToServer(sendText, triggerSource, effectiveUnGrdEntityType);
 
             // Remove any interim 'Please wait' bot-wait messages we may have added
             setMessages((prev) => prev.filter((m) => !(m.id && String(m.id).startsWith("bot-wait-"))));
@@ -824,6 +834,19 @@
             // If server returned a pendingIntent, store it short-term for the next user turn
             if (resp && resp.pendingIntent) {
               setPendingIntent(resp.pendingIntent);
+            }
+
+            if (
+              isStructuredResponse &&
+              Array.isArray(resp.suggestions) &&
+              resp.suggestions.length > 0
+            ) {
+              const suggestionType = String(resp.suggestions[0] && resp.suggestions[0].entityType ? resp.suggestions[0].entityType : "").trim().toLowerCase();
+              if (suggestionType === "vendor" || suggestionType === "division") {
+                setPendingUnGrdEntityType(suggestionType);
+              }
+            } else if (!resp.pendingIntent) {
+              setPendingUnGrdEntityType("");
             }
 
             setMessages((prev) => [
@@ -1006,7 +1029,7 @@
                           suggestions={m.suggestions} 
                           download={m.download}
                           hideSuggestionHeader={m.hideSuggestionHeader}
-                          onSelectSuggestion={(label) => handleSend(label, "menu")} 
+                          onSelectSuggestion={(item) => handleSend(item, "menu")} 
                         />
                       </div>
                     </div>

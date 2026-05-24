@@ -9,7 +9,74 @@ function showDidYouMean(suggestions) { // run this if confidence is < 0.9
 		suggestions: items.map((item, index) => ({
 			id: item.id || item.intent || String(index),
 			label: item.label || item.matchedPhrase || "",
+			displayText: item.displayText || item.label || item.matchedPhrase || "",
+			query: item.query || item.sendText || "",
+			entityType: item.entityType || "",
 		})),
+	};
+}
+
+function extractUnGrdSubjectText_(userText) {
+	const raw = String(userText || "").trim();
+	if (!raw) return "";
+
+	const lower = normalizeText(raw);
+	const patterns = [
+		/^what is the total ungrd(?:'s)? exposure for\s+(.+)$/i,
+		/^what is the total ungrd(?:'s)? for\s+(.+)$/i,
+		/^total ungrd(?:'s)? exposure for\s+(.+)$/i,
+		/^total ungrd(?:'s)? for\s+(.+)$/i,
+	];
+
+	for (let i = 0; i < patterns.length; i += 1) {
+		const match = raw.match(patterns[i]);
+		if (match && match[1]) {
+			return String(match[1]).replace(/[?!.]+$/g, "").trim();
+		}
+	}
+
+	const forMatch = raw.match(/\bfor\s+(.+)$/i);
+	if (forMatch && forMatch[1]) {
+		return String(forMatch[1]).replace(/[?!.]+$/g, "").trim();
+	}
+
+	return raw.replace(/[?!.]+$/g, "").trim();
+}
+
+function getUnGrdEntityHint_(userText) {
+	const text = normalizeText(userText);
+	if (/\bdivision\b/.test(text)) return "division";
+	if (/\bvendor\b/.test(text)) return "vendor";
+	return "";
+}
+
+function buildUnGrdEntityDisambiguation_(userText) {
+	const subjectText = extractUnGrdSubjectText_(userText);
+	if (!subjectText) {
+		return showDidYouMean([]);
+	}
+
+	const vendorQuery = "what is the total unGR'd exposure for " + subjectText + " vendor";
+	const divisionQuery = "what is the total unGR'd exposure for division " + subjectText;
+
+	return {
+		text: "Did you mean:",
+		suggestions: [
+			{
+				id: "ungrd-vendor",
+				label: subjectText + " is a <b>vendor</b>",
+				displayText: subjectText + " is a vendor",
+				query: String(userText || "").trim(),
+				entityType: "vendor",
+			},
+			{
+				id: "ungrd-division",
+				label: subjectText + " is a <b>division</b>",
+				displayText: subjectText + " is a division",
+				query: String(userText || "").trim(),
+				entityType: "division",
+			},
+		],
 	};
 }
 function buildFullQueryLabel(intentName, entityValue) {
@@ -37,6 +104,7 @@ function buildFullQueryLabel(intentName, entityValue) {
 function getMissingEntityMessage(entityKey) {
 	const prompts = {
 		VENDOR: "Please provide a vendor name",
+		DIVISION: "Please provide a division name",
 		PO_NUMBER: "Please provide a 10-digit PO number",
 		DATE: "Please provide a date (MM/DD/YYYY)",
 		YEAR: "Please provide a year",
@@ -524,10 +592,15 @@ function getRequestContext_(options) {
 			: typeof options === "string"
 				? String(options || "query")
 				: "query";
+	const confirmedUnGrdEntityType =
+		options && typeof options === "object" && !Array.isArray(options) && options.confirmedUnGrdEntityType
+			? String(options.confirmedUnGrdEntityType || "").trim().toLowerCase()
+			: "";
 
 	return {
 		triggerSource: triggerSource,
 		userProfile: userProfile,
+		confirmedUnGrdEntityType: confirmedUnGrdEntityType,
 	};
 }
 
@@ -772,6 +845,39 @@ function getGeminiResponse(userText, options) {
 	if (!parsed || !parsed.intent) {
 		return fallback;
 	}
+
+	let intent = INTENTS.find((i) => i.name === parsed.intent);
+	if (!intent) return fallback;
+
+	const isUnGrdCheckIntent =
+		intent.handler === "checkTotalUnGrdVendor" ||
+		intent.handler === "checkTotalUnGrdDivision";
+	const explicitHint = isUnGrdCheckIntent ? getUnGrdEntityHint_(userText) : "";
+	const confirmedHint = isUnGrdCheckIntent ? String(requestContext.confirmedUnGrdEntityType || "").trim().toLowerCase() : "";
+	const effectiveHint = explicitHint || confirmedHint;
+
+	if (isUnGrdCheckIntent) {
+		if (!effectiveHint) {
+			return buildUnGrdEntityDisambiguation_(userText);
+		}
+		if (!explicitHint && confirmedHint) {
+			// Keep the confirmed type active for follow-up fuzzy matches until the handler resolves cleanly.
+			requestContext.confirmedUnGrdEntityType = confirmedHint;
+		}
+
+		if (effectiveHint === "division" && intent.handler !== "checkTotalUnGrdDivision") {
+			const divisionIntent = INTENTS.find((i) => i && i.handler === "checkTotalUnGrdDivision");
+			if (divisionIntent) {
+				intent = divisionIntent;
+			}
+		} else if (effectiveHint === "vendor" && intent.handler !== "checkTotalUnGrdVendor") {
+			const vendorIntent = INTENTS.find((i) => i && i.handler === "checkTotalUnGrdVendor");
+			if (vendorIntent) {
+				intent = vendorIntent;
+			}
+		}
+	}
+
 	if (parsed.confidence < CONFIDENCE_THRESHOLD) {
 		const didYouMean = showDidYouMean(parsed.suggestions);
 		if (
@@ -786,9 +892,6 @@ function getGeminiResponse(userText, options) {
 		return didYouMean;
 	}
 
-	const intent = INTENTS.find((i) => i.name === parsed.intent);
-	if (!intent) return fallback;
-
 	const handlers = {
 		checkPoStatus: checkPoStatus,
 		checkPoGrStatus: checkPoGrStatus,
@@ -800,6 +903,10 @@ function getGeminiResponse(userText, options) {
 		listProjectDelayedClosure: listProjectDelayedClosure,
 		listPoUrgentCleanup: listPoUrgentCleanup,
 		listPoVendor: listPoVendor,
+		checkTotalUnGrdVendor: checkTotalUnGrdVendor,
+		listTotalUnGrdVendor: listTotalUnGrdVendor,
+		checkTotalUnGrdDivision: checkTotalUnGrdDivision,
+		listTotalUnGrdDivision: listTotalUnGrdDivision,
 		listPoDormant: listPoDormant,
 		listPoVendorRemainingBalance: listPoVendorRemainingBalance,
 		listVendorRemainingBalance: listVendorRemainingBalance,
@@ -830,10 +937,10 @@ function getGeminiResponse(userText, options) {
 						: null,
 		};
 
-		// For safer behavior: return pendingIntent for vendor and PO number so the
-		// client can stitch a short reply (vendor name or 10-digit PO) back into the
+		// For safer behavior: return pendingIntent for vendor, division and PO number so the
+		// client can stitch a short reply (vendor/division name or 10-digit PO) back into the
 		// original intent. Other missing entities still receive a plain prompt.
-		if (missingRequired === "PO_NUMBER" || missingRequired === "VENDOR" || missingRequired === "AGE_FILTER") {
+		if (missingRequired === "PO_NUMBER" || missingRequired === "VENDOR" || missingRequired === "DIVISION" || missingRequired === "AGE_FILTER") {
 			const response = (typeof prompt === "object" && prompt) ? Object.assign({}, prompt) : { text: String(prompt || "") };
 			response.pendingIntent = pending;
 			return response;

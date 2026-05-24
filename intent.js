@@ -203,6 +203,55 @@ const INTENTS = [
 		handler: "listPoVendor"
 	},
 	{
+		name: "check_total_ungrd_vendor",
+		phrases: [
+			"What is the total unGR'd exposure for X",
+			"What is the total unGR'd exposure for X?",
+			"What is the total unGR'd exposure for {vendor}",
+			"total ungrd exposure for X",
+			"total unGR'd for X",
+		],
+		requiredEntities: ["VENDOR"],
+		handler: "checkTotalUnGrdVendor"
+	},
+	{
+		name: "list_total_ungrd_vendor",
+		intentKeywords: ["vendor", "vendors"],
+		conflictKeywords: ["po", "purchase order"],
+		phrases: [
+			"What is the total unGR'd exposure per vendor",
+			"total unGR'd exposure per vendor",
+			"show total unGR'd per vendor",
+			"list total unGR'd per vendor"
+		],
+		responseType: "list",
+		handler: "listTotalUnGrdVendor"
+	},
+	{
+		name: "check_total_ungrd_division",
+		phrases: [
+			"What is the total unGR'd exposure for X",
+			"What is the total unGR'd exposure for the X division",
+			"total ungrd exposure for X division",
+			"total unGR'd for X division",
+		],
+		requiredEntities: ["DIVISION"],
+		handler: "checkTotalUnGrdDivision"
+	},
+	{
+		name: "list_total_ungrd_division",
+		intentKeywords: ["division", "divisions"],
+		conflictKeywords: ["project", "projects", "po", "purchase order"],
+		phrases: [
+			"What is the total unGR'd exposure per division",
+			"total unGR'd exposure per division",
+			"show total unGR'd per division",
+			"list total unGR'd per division"
+		],
+		responseType: "list",
+		handler: "listTotalUnGrdDivision"
+	},
+	{
 		name: "list_po_dormant",
 		phrases: [
 			"Which POs are dormant",
