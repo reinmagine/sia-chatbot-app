@@ -798,6 +798,7 @@ function getGeminiResponse(userText, options) {
 		checkPoAging: checkPoAging,
 		listPoAging: listPoAging,
 		listProjectDelayedClosure: listProjectDelayedClosure,
+		listPoUrgentCleanup: listPoUrgentCleanup,
 		listPoVendor: listPoVendor,
 		listPoDormant: listPoDormant,
 		listPoVendorRemainingBalance: listPoVendorRemainingBalance,

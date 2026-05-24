@@ -361,6 +361,71 @@ function listProjectDelayedClosure(entities, parsed, context) {
 	});
 }
 
+function listPoUrgentCleanup(entities, parsed, context) {
+	const dataset = getCommschedRows_(["vendor", "poNumber", "poSla", "deliveryComplete"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest COMMSCHED sheet.";
+	}
+
+	const matches = [];
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+		const poSlaValue = String(row.values && row.values.poSla ? row.values.poSla : "").trim();
+		const deliveryCompleteValue = String(row.values && row.values.deliveryComplete ? row.values.deliveryComplete : "").trim().toUpperCase();
+
+		if (!vendorName || !poNumber || !poSlaValue) {
+			continue;
+		}
+
+		const bucketInfo = getPoSlaBucketInfo_(poSlaValue);
+		if (!bucketInfo || bucketInfo.cellValue !== "e. >24 months") {
+			continue;
+		}
+
+		if (deliveryCompleteValue !== "NO") {
+			continue;
+		}
+
+		matches.push({
+			vendor: vendorName,
+			poNumber: poNumber,
+		});
+	}
+
+	if (matches.length === 0) {
+		return "No urgent cleanup POs found.";
+	}
+
+	matches.sort(function(a, b) {
+		const vendorCompare = String(a.vendor || "").localeCompare(String(b.vendor || ""));
+		if (vendorCompare !== 0) {
+			return vendorCompare;
+		}
+
+		return String(a.poNumber || "").localeCompare(String(b.poNumber || ""));
+	});
+
+	const headers = ["Vendor", "PO Number"];
+	const csvRows = matches.map(function(match) {
+		return [match.vendor, match.poNumber];
+	});
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+	const tableText = buildTableResponse_(headers, csvRows, {
+		includeCsvDownload: false,
+	});
+
+	return {
+		text: tableText,
+		download: {
+			filename: "sia-urgent-cleanup-po-response-" + timestamp + ".csv",
+			content: buildCsvContent_(headers, csvRows),
+			mimeType: "text/csv",
+		},
+	};
+}
+
 function listPoVendor(entities, parsed, context) {
 	const rawVendor = String(entities.VENDOR || "").trim();
 	if (!rawVendor) {

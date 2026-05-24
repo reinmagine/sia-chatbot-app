@@ -174,6 +174,21 @@ const INTENTS = [
 		handler: "listProjectDelayedClosure"
 	},
 	{
+		name: "list_po_urgent_cleanup",
+		intentKeywords: ["po", "purchase order"],
+		conflictKeywords: ["project", "projects", "vendor", "vendors"],
+		phrases: [
+			"Which POs require urgent cleanup?",
+			"List all POs requiring urgent cleanup",
+			"Show me urgent cleanup POs",
+			"Which POs need urgent cleanup",
+			"List urgent cleanup POs",
+			"Show POs for urgent cleanup",
+		],
+		responseType: "list",
+		handler: "listPoUrgentCleanup"
+	},
+	{
 		name: "list_po_vendor",
 		phrases: [
 			"List all POs from X",
