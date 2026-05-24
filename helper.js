@@ -715,6 +715,183 @@ function buildTableResponse_(headers, rows, options) {
 	};
 }
 
+function collectUniqueColumnValues_(rows, columnName) {
+	const uniqueValues = [];
+	const seen = {};
+	const inputRows = Array.isArray(rows) ? rows : [];
+	const key = String(columnName || "").trim();
+
+	if (!key) {
+		return uniqueValues;
+	}
+
+	for (let i = 0; i < inputRows.length; i += 1) {
+		const row = inputRows[i] || {};
+		const values = row.values || {};
+		const value = String(values[key] || "").trim();
+		if (!value || seen[value]) {
+			continue;
+		}
+
+		seen[value] = true;
+		uniqueValues.push(value);
+	}
+
+	return uniqueValues;
+}
+
+function scoreTextCandidate_(queryText, candidateText) {
+	const queryNorm = normalizeText(queryText || "");
+	const candidateNorm = normalizeText(candidateText || "");
+	if (!queryNorm || !candidateNorm) {
+		return 0;
+	}
+
+	if (queryNorm === candidateNorm) {
+		return 1;
+	}
+
+	const tokensA = tokenize(queryNorm);
+	const tokensB = tokenize(candidateNorm);
+	const jaccard = jaccardSimilarity(tokensA, tokensB);
+	const levenshtein = normalizedLevenshteinSimilarity(queryNorm, candidateNorm);
+	return jaccard * 0.6 + levenshtein * 0.4;
+}
+
+function buildTopTextMatches_(queryText, candidates, limit) {
+	const inputCandidates = Array.isArray(candidates) ? candidates : [];
+	const maxItems = Number.isInteger(limit) && limit > 0 ? limit : 3;
+	const scored = inputCandidates.map(function(candidate) {
+		return {
+			value: String(candidate || "").trim(),
+			score: scoreTextCandidate_(queryText, candidate),
+		};
+	}).filter(function(item) {
+		return Boolean(item.value);
+	});
+
+	scored.sort(function(a, b) {
+		if (b.score !== a.score) {
+			return b.score - a.score;
+		}
+
+		return String(a.value || "").localeCompare(String(b.value || ""));
+	});
+
+	return scored.slice(0, maxItems);
+}
+
+function parseDisplayAmount_(raw) {
+	if (raw === undefined || raw === null) return NaN;
+	if (typeof raw === "number") return Number(raw);
+	let text = String(raw || "").trim();
+	if (!text) return NaN;
+
+	let negative = false;
+	if (/^\(.*\)$/.test(text)) {
+		negative = true;
+		text = text.replace(/^\(|\)$/g, "");
+	}
+
+	text = text.replace(/[^0-9.\-]/g, "");
+	const numeric = parseFloat(text);
+	if (isNaN(numeric)) return NaN;
+	return negative ? -Math.abs(numeric) : numeric;
+}
+
+function formatCount_(n) {
+	const value = Math.max(0, Math.floor(Number(n || 0)));
+	return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function formatMoney_(value) {
+	const fixed = Number(value || 0).toFixed(2);
+	const parts = fixed.split(".");
+	parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+	return parts.join(".");
+}
+
+function formatCurrencySummaryTotals_(entries) {
+	return (Array.isArray(entries) ? entries : []).map(function(entry) {
+		return (entry.currency ? entry.currency + " " : "") + formatMoney_(entry.total);
+	}).join(", ");
+}
+
+function buildCurrencySummaryEntries_(rows, options) {
+	const config = options || {};
+	const inputRows = Array.isArray(rows) ? rows : [];
+	const entityField = String(config.entityField || "").trim();
+	const currencyField = String(config.currencyField || "currency").trim();
+	const amountField = String(config.amountField || "remainingBalance").trim();
+	const filterEntityKey = String(config.filterEntityKey || "").trim();
+	const resolveEntity = typeof config.resolveEntity === "function"
+		? config.resolveEntity
+		: function(value) {
+			const text = String(value || "").trim();
+			return text ? { matched: true, key: text, display: text } : { matched: false, key: "", display: "" };
+		};
+	const groups = {};
+
+	if (!entityField) {
+		return [];
+	}
+
+	for (let i = 0; i < inputRows.length; i += 1) {
+		const row = inputRows[i] || {};
+		const values = row.values || {};
+		const resolvedEntity = resolveEntity(values[entityField], row);
+		if (!resolvedEntity || !resolvedEntity.matched) {
+			continue;
+		}
+
+		const entityKey = String(
+			resolvedEntity.key ||
+			resolvedEntity.canonicalDivision ||
+			resolvedEntity.canonicalValue ||
+			resolvedEntity.display ||
+			resolvedEntity.value ||
+			"",
+		).trim();
+		if (!entityKey || (filterEntityKey && entityKey !== filterEntityKey)) {
+			continue;
+		}
+
+		const entityDisplay = String(
+			resolvedEntity.display ||
+			resolvedEntity.canonicalDivision ||
+			resolvedEntity.canonicalValue ||
+			entityKey,
+		).trim();
+		const currency = String(values[currencyField] || "").trim();
+		const amount = parseDisplayAmount_(values[amountField]);
+		if (isNaN(amount)) {
+			continue;
+		}
+
+		const groupKey = entityKey + "||" + currency;
+		if (!groups[groupKey]) {
+			groups[groupKey] = {
+				entityKey: entityKey,
+				entityDisplay: entityDisplay,
+				currency: currency,
+				total: 0,
+				posCount: 0,
+				rows: 0,
+			};
+		}
+
+		groups[groupKey].total += amount;
+		groups[groupKey].rows += 1;
+		if (amount > 0) {
+			groups[groupKey].posCount += 1;
+		}
+	}
+
+	return Object.keys(groups).map(function(key) {
+		return groups[key];
+	});
+}
+
 function normalizePoSlaCellValue_(value) {
 	return normalizeDashCharacters_(String(value || ""))
 		.toLowerCase()

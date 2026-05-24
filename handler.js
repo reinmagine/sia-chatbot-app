@@ -448,19 +448,9 @@ function listPoVendor(entities, parsed, context) {
 	const vendorList = Object.keys(vendorSet);
 	const queryNorm = normalizeText(rawVendor || "");
 
-	function scoreCandidate(candidate) {
-		const candidateNorm = normalizeText(candidate || "");
-		if (!candidateNorm) return 0;
-		if (candidateNorm === queryNorm) return 1;
-		const tokensA = tokenize(queryNorm);
-		const tokensB = tokenize(candidateNorm);
-		const jaccard = jaccardSimilarity(tokensA, tokensB);
-		const levenshtein = normalizedLevenshteinSimilarity(queryNorm, candidateNorm);
-		return jaccard * 0.6 + levenshtein * 0.4;
-	}
-
-	const scored = vendorList.map(function(v) { return {vendor: v, score: scoreCandidate(v)}; });
-	scored.sort(function(a,b){ return b.score - a.score; });
+	// score vendor candidates using shared helper
+	const scoredItems = buildTopTextMatches_(queryNorm, vendorList, 3);
+	const scored = scoredItems.map(function(it) { return { vendor: it.value, score: it.score }; });
 
 	const top = scored.slice(0, 3);
 	if (top.length === 0) return "No matching vendors found.";
@@ -517,7 +507,7 @@ function listPoDormant(entities, parsed, context) {
 			continue;
 		}
 
-		const parsedAmount = parseFloat(goodsReceiptValue.replace(/[^0-9.\-]/g, ""));
+		const parsedAmount = parseDisplayAmount_(goodsReceiptValue);
 		if (!isNaN(parsedAmount) && parsedAmount === 0) {
 			matches.push({ vendor: vendorName, poNumber: poNumber });
 		}
@@ -558,10 +548,9 @@ function listPoVendorRemainingBalance(entities, parsed, context) {
 		const row = dataset.rows[i] || {};
 		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
 		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
-		let balanceRaw = String(row.values && row.values.ungrdUsd ? row.values.ungrdUsd : "").trim();
+		const balanceRaw = String(row.values && row.values.ungrdUsd ? row.values.ungrdUsd : "").trim();
 		if (!poNumber || !balanceRaw) continue;
-		// remove commas and other non-numeric except dot and minus
-		const numeric = parseFloat(balanceRaw.replace(/[^0-9.\-]/g, ""));
+		const numeric = parseDisplayAmount_(balanceRaw);
 		if (isNaN(numeric)) continue;
 		rows.push({ poNumber: poNumber, vendor: vendorName, balance: numeric });
 	}
@@ -571,20 +560,13 @@ function listPoVendorRemainingBalance(entities, parsed, context) {
 	rows.sort(function(a,b){ return b.balance - a.balance; });
 	const top10 = rows.slice(0, 10);
 
-	function formatMoney(n) {
-		const fixed = Number(n || 0).toFixed(2);
-		const parts = fixed.split('.');
-		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-		return parts.join('.');
-	}
-
 	const lines = [
 		"| PO Number | Vendor | Remaining Balance |",
 		"| --- | --- | ---: |",
 	];
 	for (let i = 0; i < top10.length; i += 1) {
 		const r = top10[i];
-		lines.push("| " + r.poNumber + " | " + r.vendor + " | USD " + formatMoney(r.balance) + " |");
+		lines.push("| " + r.poNumber + " | " + r.vendor + " | USD " + formatMoney_(r.balance) + " |");
 	}
 
 	return lines.join("\n");
@@ -605,7 +587,7 @@ function listVendorRemainingBalance(entities, parsed, context) {
 			continue;
 		}
 
-		const numeric = parseFloat(balanceRaw.replace(/[^0-9.\-]/g, ""));
+		const numeric = parseDisplayAmount_(balanceRaw);
 		if (isNaN(numeric)) {
 			continue;
 		}
@@ -625,13 +607,6 @@ function listVendorRemainingBalance(entities, parsed, context) {
 		return b.balance - a.balance;
 	});
 
-	function formatMoney(n) {
-		const fixed = Number(n || 0).toFixed(2);
-		const parts = fixed.split('.');
-		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-		return parts.join('.');
-	}
-
 	const top10 = totals.slice(0, 10);
 	const lines = [
 		"| Vendor | Remaining Balance |",
@@ -640,42 +615,13 @@ function listVendorRemainingBalance(entities, parsed, context) {
 
 	for (let i = 0; i < top10.length; i += 1) {
 		const item = top10[i];
-		lines.push("| " + item.vendor + " | USD " + formatMoney(item.balance) + " |");
+		lines.push("| " + item.vendor + " | USD " + formatMoney_(item.balance) + " |");
 	}
 
 	return lines.join("\n");
 }
 
-/* Helpers for unGR'd aggregation */
-function parseDisplayAmount(raw) {
-	if (raw === undefined || raw === null) return NaN;
-	if (typeof raw === 'number') return Number(raw);
-	let s = String(raw || "").trim();
-	if (!s) return NaN;
-	// Parentheses indicate negative values e.g. (1,234.56)
-	let negative = false;
-	if (/^\(.*\)$/.test(s)) {
-		negative = true;
-		s = s.replace(/^\(|\)$/g, "");
-	}
-	// Remove currency symbols, letters and thousands separators but keep dot and minus
-	s = s.replace(/[^0-9.\-]/g, "");
-	const n = parseFloat(s);
-	if (isNaN(n)) return NaN;
-	return negative ? -Math.abs(n) : n;
-}
-
-function formatMoney(n) {
-	const fixed = Number(n || 0).toFixed(2);
-	const parts = fixed.split('.');
-	parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return parts.join('.');
-}
-
-function formatCount(n) {
-	const value = Math.max(0, Math.floor(Number(n || 0)));
-	return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
+/* Helpers for unGR'd aggregation provided by helper.js (parseDisplayAmount_, formatMoney_, formatCount_) */
 
 function checkTotalUnGrdVendor(entities, parsed, context) {
 	const rawVendor = String(entities.VENDOR || '').trim();
@@ -694,19 +640,9 @@ function checkTotalUnGrdVendor(entities, parsed, context) {
 	const vendorList = Object.keys(vendorSet);
 	const queryNorm = normalizeText(rawVendor || '');
 
-	function scoreCandidate(candidate) {
-		const candidateNorm = normalizeText(candidate || '');
-		if (!candidateNorm) return 0;
-		if (candidateNorm === queryNorm) return 1;
-		const tokensA = tokenize(queryNorm);
-		const tokensB = tokenize(candidateNorm);
-		const jaccard = jaccardSimilarity(tokensA, tokensB);
-		const levenshtein = normalizedLevenshteinSimilarity(queryNorm, candidateNorm);
-		return jaccard * 0.6 + levenshtein * 0.4;
-	}
-
-	const scored = vendorList.map(function(v){ return { vendor: v, score: scoreCandidate(v) }; });
-	scored.sort(function(a,b){ return b.score - a.score; });
+	// score vendor candidates using shared helper
+	const scoredItems = buildTopTextMatches_(queryNorm, vendorList, 3);
+	const scored = scoredItems.map(function(it){ return { vendor: it.value, score: it.score }; });
 	if (scored.length === 0) return 'No matching vendors found.';
 
 	const top = scored.slice(0,3);
@@ -726,7 +662,7 @@ function checkTotalUnGrdVendor(entities, parsed, context) {
 		if (!vendorName || vendorName !== chosen) continue;
 		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
 		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
-		const num = parseDisplayAmount(rawAmt);
+		const num = parseDisplayAmount_(rawAmt);
 		if (isNaN(num)) continue;
 		totalsByCurrency[currency] = totalsByCurrency[currency] || { total: 0, posCount: 0, rows: 0 };
 		totalsByCurrency[currency].total += num;
@@ -740,11 +676,11 @@ function checkTotalUnGrdVendor(entities, parsed, context) {
 
 	const currencyParts = Object.keys(totalsByCurrency).map(function(curr){
 		const info = totalsByCurrency[curr];
-		return (curr ? curr + ' ' : '') + formatMoney(info.total);
+		return (curr ? curr + ' ' : '') + formatMoney_(info.total);
 	});
 
 	const formattedTotals = currencyParts.join(', ');
-	return 'Vendor <b>' + chosen + '</b> has a total unGR\'d value of ' + formattedTotals + ' from ' + formatCount(totalPos) + ' to be GR\'d POs (out of ' + formatCount(totalRows) + ').';
+	return 'Vendor <b>' + chosen + '</b> has a total unGR\'d value of ' + formattedTotals + ' from ' + formatCount_(totalPos) + ' to be GR\'d POs (out of ' + formatCount_(totalRows) + ').';
 }
 
 function listTotalUnGrdVendor(entities, parsed, context) {
@@ -758,7 +694,7 @@ function listTotalUnGrdVendor(entities, parsed, context) {
 		if (!vendor) continue;
 		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
 		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
-		const num = parseDisplayAmount(rawAmt);
+		const num = parseDisplayAmount_(rawAmt);
 		if (isNaN(num)) continue;
 		const key = vendor + '||' + currency;
 		vendorCurrencyMap[key] = vendorCurrencyMap[key] || { vendor: vendor, currency: currency, total: 0, posCount: 0, rows: 0 };
@@ -777,8 +713,8 @@ function listTotalUnGrdVendor(entities, parsed, context) {
 	entries.sort(function(a,b){ return b.total - a.total; });
 
 	const rows = entries.map(function(v) {
-		const formattedTotal = (v.currency ? v.currency + ' ' : '') + formatMoney(v.total);
-		return [v.vendor, formattedTotal, formatCount(v.posCount), formatCount(v.rows)];
+		const formattedTotal = (v.currency ? v.currency + ' ' : '') + formatMoney_(v.total);
+		return [v.vendor, formattedTotal, formatCount_(v.posCount), formatCount_(v.rows)];
 	});
 
 	const headers = ['Vendor','Total unGR\'d','Remaining POs','Total POs'];
@@ -814,7 +750,7 @@ function checkTotalUnGrdDivision(entities, parsed, context) {
 		if (!resolvedRow.matched || resolvedRow.canonicalDivision !== resolved.canonicalDivision) continue;
 		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
 		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
-		const num = parseDisplayAmount(rawAmt);
+		const num = parseDisplayAmount_(rawAmt);
 		if (isNaN(num)) continue;
 		totalsByCurrency[currency] = totalsByCurrency[currency] || { total: 0, posCount: 0, rows: 0 };
 		totalsByCurrency[currency].total += num;
@@ -828,10 +764,10 @@ function checkTotalUnGrdDivision(entities, parsed, context) {
 
 	const currencyParts = Object.keys(totalsByCurrency).map(function(curr){
 		const info = totalsByCurrency[curr];
-		return (curr ? curr + ' ' : '') + formatMoney(info.total);
+		return (curr ? curr + ' ' : '') + formatMoney_(info.total);
 	});
 	const formattedTotals = currencyParts.join(', ');
-	return 'Division <b>' + resolved.canonicalDivision + '</b> has a total unGR\'d value of ' + formattedTotals + ' from ' + formatCount(totalPos) + ' to be GR\'d POs (out of ' + formatCount(totalRows) + ').';
+	return 'Division <b>' + resolved.canonicalDivision + '</b> has a total unGR\'d value of ' + formattedTotals + ' from ' + formatCount_(totalPos) + ' to be GR\'d POs (out of ' + formatCount_(totalRows) + ').';
 }
 
 function listTotalUnGrdDivision(entities, parsed, context) {
@@ -848,7 +784,7 @@ function listTotalUnGrdDivision(entities, parsed, context) {
 		const division = resolved.canonicalDivision;
 		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
 		const rawAmt = row.values && row.values.remainingBalance !== undefined ? row.values.remainingBalance : '';
-		const num = parseDisplayAmount(rawAmt);
+		const num = parseDisplayAmount_(rawAmt);
 		if (isNaN(num)) continue;
 		const key = division + '||' + currency;
 		groupMap[key] = groupMap[key] || { division: division, currency: currency, total: 0, posCount: 0, rows: 0 };
@@ -864,8 +800,8 @@ function listTotalUnGrdDivision(entities, parsed, context) {
 	entries.sort(function(a,b){ return b.total - a.total; });
 
 	const rows = entries.map(function(v) {
-		const formattedTotal = (v.currency ? v.currency + ' ' : '') + formatMoney(v.total);
-		return [v.division, formattedTotal, formatCount(v.posCount), formatCount(v.rows)];
+		const formattedTotal = (v.currency ? v.currency + ' ' : '') + formatMoney_(v.total);
+		return [v.division, formattedTotal, formatCount_(v.posCount), formatCount_(v.rows)];
 	});
 
 	const headers = ['Division','Total unGR\'d','Remaining POs','Total POs'];
