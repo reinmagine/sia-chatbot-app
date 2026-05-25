@@ -5,6 +5,7 @@
 
 entities:
 - PO_NUMBER: string of 10 digit numbers with no characters or spaces "1234567890"
+- GR_NUMBER: short GR case number (typically 1-7 digits) when the text clearly refers to a GR ticket/case
 
 */
 
@@ -305,9 +306,34 @@ const INTENTS = [
 			"GR ticket for GR X",
 			"GR ticket status for GR X",
 			"what is the current status of the GR ticket X",
+			"what is the status of GR X",
+			"status of GR X",
+			"GR X status",
+			"check GR X status",
+			"what stage is GR X currently in",
+			"status of GR case no X",
+			"GR case X status",
+			"is GR X already been posted in SAP",
+			"is GR X still pending validation",
+			"is GR X already completed",
+			"is GR X still in process",
 		],
 		requiredEntities: ["GR_NUMBER"],
 		handler: "checkGrTicketStatus"
+	},
+	{
+		name: "check_gr_ticket_submitted",
+		phrases: [
+			"when was GR X submitted",
+			"when was GR case no X submitted",
+			"what is the submitted date of GR X",
+			"date submitted for GR X",
+			"submitted date of GR X",
+			"GR X submitted",
+			"when did GR X submit",
+		],
+		requiredEntities: ["GR_NUMBER"],
+		handler: "checkGrTicketSubmitted"
 	},
 
 ];

@@ -63,6 +63,65 @@ function extractAgeFilterMatches(rawText) {
 	return matches;
 }
 
+function getGrTicketQueryType(rawText) {
+	const text = normalizeText(rawText);
+	if (!text) {
+		return "";
+	}
+
+	if (/\b(submitted|submit|date submitted)\b/.test(text)) {
+		return "submitted";
+	}
+
+	if (/\b(status|stage|stages|posting|posted|validation|validated|complete|completed|cancel|cancellation|revalidation|resubmitted|pending|sap|wbs)\b/.test(text)) {
+		return "status";
+	}
+
+	if (/\b(gr|ticket|case)\b/.test(text)) {
+		return "status";
+	}
+
+	return "";
+}
+
+function extractGrTicketMatches(rawText) {
+	const input = String(rawText || "");
+	const queryType = getGrTicketQueryType(input);
+	if (!queryType) {
+		return [];
+	}
+
+	const patterns = [
+		/\b(?:gr(?:\s*ticket|\s*case(?:\s*no\.?|\s*number)?|\s*no\.?|\s*number)?\s*[:#\.\-]*)?(\d{1,9})\b/gi,
+	];
+	const matches = [];
+	const seen = {};
+
+	patterns.forEach((pattern) => {
+		let match = null;
+		while ((match = pattern.exec(input)) !== null) {
+			const value = String(match[1] || "").trim();
+			if (!value) {
+				continue;
+			}
+
+			if (/^\d{4}$/.test(value) && Number(value) >= 1900 && Number(value) <= 2099) {
+				continue;
+			}
+
+			const normalizedValue = normalizeText(value);
+			if (seen[normalizedValue]) {
+				continue;
+			}
+
+			seen[normalizedValue] = true;
+			matches.push(value);
+		}
+	});
+
+	return matches;
+}
+
 function tokenize(text) {
 	if (!text) return [];
 	return text.split(/\s+/).filter(Boolean);
@@ -120,13 +179,14 @@ function normalizedLevenshteinSimilarity(a, b) {
 function extractEntitiesFromText(userText) {
 	const rawText = String(userText || "");
 	const poMatches = rawText.match(/\b\d{10}\b/g) || [];
+	const grMatches = extractGrTicketMatches(rawText);
 	// vendor capture: phrases like "from huawei" or "for nokia"
 	const vendorMatches = [];
 	const vendorRegex = /\b(?:from|for)\s+([A-Za-z0-9&.,'()\-\/\s]{2,60})/i;
 	const vendorM = rawText.match(vendorRegex);
 	if (vendorM && vendorM[1]) {
 		const vendorCandidate = String(vendorM[1]).trim().replace(/\b(?:vendor|vendors)\b$/i, "").trim();
-		if (vendorCandidate) {
+		if (vendorCandidate && !/\bpo\b|purchase order|\bgr\b|ticket|case|status|submitted|submission|posting|validation/i.test(vendorCandidate)) {
 			vendorMatches.push(vendorCandidate);
 		}
 	}
@@ -138,7 +198,7 @@ function extractEntitiesFromText(userText) {
 	if (divisionM && divisionM[1]) {
 		// Heuristic: if the captured phrase contains words like 'vendor' or 'po ' it's likely not a division
 		const candidate = String(divisionM[1]).trim().replace(/^\bdivision\b\s*/i, "").replace(/\bdivision\b$/i, "").trim();
-		if (candidate && !/\bpo\b|vendor|purchase order/i.test(candidate)) {
+		if (candidate && !/\bpo\b|vendor|purchase order|\bgr\b|ticket|case|status|submitted|submission|posting|validation/i.test(candidate)) {
 			divisionMatches.push(candidate);
 		}
 	}
@@ -151,6 +211,7 @@ function extractEntitiesFromText(userText) {
 
 	return {
 		PO_NUMBER: poMatches,
+		GR_NUMBER: grMatches,
 		VENDOR: vendorMatches,
 		DIVISION: divisionMatches,
 		DATE: dateMatches,
@@ -178,6 +239,7 @@ function replaceEntityValuesForMatching(normalizedText, entityMatches) {
 
 	(entityMatches.DATE || []).forEach((value) => replaceMatch("DATE", value));
 	(entityMatches.AGE_FILTER || []).forEach((value) => replaceMatch("AGE_FILTER", value));
+	(entityMatches.GR_NUMBER || []).forEach((value) => replaceMatch("GR_NUMBER", value));
 	(entityMatches.PO_NUMBER || []).forEach((value) => replaceMatch("PO_NUMBER", value));
 	(entityMatches.VENDOR || []).forEach((value) => replaceMatch("VENDOR", value));
 	(entityMatches.DIVISION || []).forEach((value) => replaceMatch("DIVISION", value));
@@ -340,6 +402,7 @@ function parseInput(userText) {
 	}
 
 	const entityMatches = extractEntitiesFromText(rawText);
+	const grTicketQueryType = getGrTicketQueryType(rawText);
 	const normalizedForMatch = replaceEntityValuesForMatching(
 		normalized,
 		entityMatches,
@@ -359,7 +422,10 @@ function parseInput(userText) {
 	let bestIntent = null;
 	let bestScore = 0;
 	let bestPhrase = null;
+	let bestGrTicketStatus = null;
+	let bestGrTicketSubmitted = null;
 	const suggestions = [];
+	const suggestionEntityValue = entities.PO_NUMBER || entities.GR_NUMBER || "";
 
 	INTENTS.forEach((intent) => {
 		const bestForIntent = scoreIntentCandidate(intent, inputVariants, normalized);
@@ -369,11 +435,27 @@ function parseInput(userText) {
 			bestPhrase = bestForIntent.phrase;
 		}
 
+		if (intent && intent.handler === "checkGrTicketStatus") {
+			bestGrTicketStatus = {
+				intent: intent,
+				score: bestForIntent.score,
+				phrase: bestForIntent.phrase,
+			};
+		}
+
+		if (intent && intent.handler === "checkGrTicketSubmitted") {
+			bestGrTicketSubmitted = {
+				intent: intent,
+				score: bestForIntent.score,
+				phrase: bestForIntent.phrase,
+			};
+		}
+
 		const suggestion = buildIntentSuggestion(
 			intent,
 			inputVariants,
 			normalized,
-			entities.PO_NUMBER,
+			suggestionEntityValue,
 		);
 		if (suggestion) {
 			suggestions.push(suggestion);
@@ -381,6 +463,15 @@ function parseInput(userText) {
 	});
 
 	suggestions.sort((a, b) => b.score - a.score);
+
+	if ((entityMatches.GR_NUMBER || []).length > 0 && (entityMatches.PO_NUMBER || []).length === 0 && grTicketQueryType) {
+		const chosenGrIntent = grTicketQueryType === "submitted" ? bestGrTicketSubmitted : bestGrTicketStatus;
+		if (chosenGrIntent && chosenGrIntent.intent) {
+			bestIntent = chosenGrIntent.intent;
+			bestPhrase = chosenGrIntent.phrase;
+			bestScore = Math.min(1, (chosenGrIntent.score || 0) + 0.35);
+		}
+	}
 
 	if (!bestIntent) {
 		return {

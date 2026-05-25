@@ -746,7 +746,7 @@
 
           setIsTyping(true);
 
-          // If we have a short-lived pending intent and the user replied with a bare PO number,
+          // If we have a short-lived pending intent and the user replied with a bare PO/GR number,
           // combine it into the original intent for sending, but still display the bare value.
           let sendText = isSuggestionPayload && text.query ? String(text.query || "").trim() : raw;
           const clickedUnGrdEntityType = isSuggestionPayload && text.entityType ? String(text.entityType || "").trim().toLowerCase() : "";
@@ -760,6 +760,17 @@
                     .replace(/\bX\b/gi, raw);
                 } else {
                   sendText = raw;
+                }
+                setPendingIntent(null);
+              } else if (pendingIntent.missingEntity === "GR_NUMBER" && /^\d{1,9}$/.test(raw)) {
+                if (pendingIntent.phrase) {
+                  sendText = String(pendingIntent.phrase)
+                    .replace(/\bGR X\b/gi, "GR " + raw)
+                    .replace(/\bX\b/gi, raw)
+                    .replace(/\s+/g, " ")
+                    .trim();
+                } else {
+                  sendText = "GR ticket status for GR " + raw;
                 }
                 setPendingIntent(null);
               } else if (pendingIntent.missingEntity === "AGE_FILTER" && raw) {

@@ -106,6 +106,7 @@ function getMissingEntityMessage(entityKey) {
 		VENDOR: "Please provide a vendor name",
 		DIVISION: "Please provide a division name",
 		PO_NUMBER: "Please provide a 10-digit PO number",
+		GR_NUMBER: "Please provide a GR ticket case number",
 		DATE: "Please provide a date (MM/DD/YYYY)",
 		YEAR: "Please provide a year",
 	};
@@ -633,6 +634,14 @@ function getCommschedNoDataMessage_(poNumber) {
 	return "No data found for <b>PO " + poNumber + "</b>.";
 }
 
+function getGrTicketNotFoundMessage_(grNumber) {
+	return "Cannot find <b>GR Ticket " + grNumber + "</b>. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
+}
+
+function getGrTicketNoDataMessage_(grNumber) {
+	return "No data found for <b>GR Ticket " + grNumber + "</b>.";
+}
+
 function formatCsvValue_(value) {
 	const text = String(value === undefined || value === null ? "" : value);
 	if (/[",\n\r]/.test(text)) {
@@ -1078,6 +1087,8 @@ function getGeminiResponse(userText, options) {
 		checkPoLatestGrDate: checkPoLatestGrDate,
 		checkPoTotalValue: checkPoTotalValue,
 		checkPoAging: checkPoAging,
+		checkGrTicketStatus: checkGrTicketStatus,
+		checkGrTicketSubmitted: checkGrTicketSubmitted,
 		listPoAging: listPoAging,
 		listProjectDelayedClosure: listProjectDelayedClosure,
 		listPoUrgentCleanup: listPoUrgentCleanup,
@@ -1116,10 +1127,10 @@ function getGeminiResponse(userText, options) {
 						: null,
 		};
 
-		// For safer behavior: return pendingIntent for vendor, division and PO number so the
-		// client can stitch a short reply (vendor/division name or 10-digit PO) back into the
+		// For safer behavior: return pendingIntent for vendor, division, PO number and GR number so the
+		// client can stitch a short reply (vendor/division name, 10-digit PO, or GR case number) back into the
 		// original intent. Other missing entities still receive a plain prompt.
-		if (missingRequired === "PO_NUMBER" || missingRequired === "VENDOR" || missingRequired === "DIVISION" || missingRequired === "AGE_FILTER") {
+		if (missingRequired === "PO_NUMBER" || missingRequired === "VENDOR" || missingRequired === "DIVISION" || missingRequired === "AGE_FILTER" || missingRequired === "GR_NUMBER") {
 			const response = (typeof prompt === "object" && prompt) ? Object.assign({}, prompt) : { text: String(prompt || "") };
 			response.pendingIntent = pending;
 			return response;
@@ -1423,7 +1434,10 @@ function resolveRfpSheet_(workbook) {
 }
 
 function resolveGrSheet_(workbook) {
-	return findFirstVisibleSheet_(workbook);
+	return findWorksheetByCandidates_(workbook, ["Form Responses", "Form Responses 1"], /form responses/i)
+		|| resolveSheetByHeader_(workbook, 1, "Case No")
+		|| resolveSheetByHeader_(workbook, 1, "GR Stages:")
+		|| findFirstVisibleSheet_(workbook);
 }
 
 const DATASET_SPECS = {
@@ -1491,8 +1505,18 @@ const DATASET_SPECS = {
 		headerRow: 1,
 		dataStartRow: 2,
 		cacheTtlSeconds: 900,
-		fields: {},
-		fieldPropertyNames: {},
+		fields: {
+			caseNo: { match: "exact", value: "Case No" },
+			grStages: { match: "exact", value: "GR Stages:" },
+			dateSubmitted: { match: "exact", value: "Date Submitted:" },
+			poNumber: { match: "exact", value: "PO Number:" },
+		},
+		fieldPropertyNames: {
+			caseNo: "caseNoColumn",
+			grStages: "grStagesColumn",
+			dateSubmitted: "dateSubmittedColumn",
+			poNumber: "poNumberColumn",
+		},
 	},
 };
 
@@ -1940,6 +1964,10 @@ function lookupDatasetRowByField_(datasetKey, lookupFieldKey, lookupValue, reque
 
 function lookupCommschedPoRow_(poNumber, requestedFieldKeys, options) {
 	return lookupDatasetRowByField_("COMMSCHED", "poNumber", poNumber, requestedFieldKeys, options);
+}
+
+function lookupGrTicketRow_(grNumber, requestedFieldKeys, options) {
+	return lookupDatasetRowByField_("GR", "caseNo", grNumber, requestedFieldKeys, options);
 }
 
 function findExactMatchRowInColumn_(sheet, columnIndex, dataStartRow, lastRow, targetValue) {
