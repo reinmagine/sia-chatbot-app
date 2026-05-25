@@ -56,6 +56,9 @@
     <script id="user-context-data" type="application/json">
       <?!= userContextJson ?>
     </script>
+    <script id="logo-data" type="application/json">
+      <?!= JSON.stringify(logoDataUrl || "") ?>
+    </script>
     <div
       id="root"
       class="h-full w-full max-w-full md:max-w-4xl mx-auto flex flex-col bg-white md:shadow-xl overflow-hidden"
@@ -104,25 +107,25 @@
         "GR Tracking & Status Monitoring",
       ];
 
-      const LOGO_IMAGE_URL =
-        "https://drive.google.com/file/d/10AlyHkfuFJm3yUDhK_Oorxb3B_SgYVUb/view?usp=sharing";
+      const LOGO_IMAGE_URL = JSON.parse(
+        document.getElementById("logo-data")?.textContent || '""'
+      ) || "https://drive.google.com/uc?export=view&id=10AlyHkfuFJm3yUDhK_Oorxb3B_SgYVUb";
 
       const EXPRESSIONS = {
-        neutral: "https://drive.google.com/file/d/10AlyHkfuFJm3yUDhK_Oorxb3B_SgYVUb/view?usp=sharing",
-        celebration: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-celebration.png",
-        concerned: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-concerned.png",
-        confirm: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-confirm.png",
-        confused: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-confused.png",
-        doubtful: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-doubtful.png",
-        excited: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-excited.png",
-        inspired: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-inspired.png",
-        loving: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-loving.png",
-        stressed: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-stressed.png",
-        surprised: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-surprised.png",
-        thinking: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-thinking.png",
-        tired: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-tired.png",
-        waiting: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-waiting.png",
-        wink: "https://raw.githubusercontent.com/ezekielinigo/COMMSCHED-chat-app/main/assets/sia-wink.png",
+        neutral: LOGO_IMAGE_URL,
+        celebration: "https://drive.google.com/uc?export=view&id=1TnXnWOdRHrR7ym7k7o89c8j1CfbUDCFP",
+        concerned: "https://drive.google.com/uc?export=view&id=1XqFOeww2dX7eJ_QO7mq4tey6AEcZpKWx",
+        confirm: "https://drive.google.com/uc?export=view&id=1hp0mRaQdnBl4Hb9-BfJ40MzB55J5tRSQ",
+        confused: "https://drive.google.com/uc?export=view&id=1cJ5bEgMyF51GU7n-8EY7uY1a20aBmwOP",
+        doubtful: "https://drive.google.com/uc?export=view&id=1RpMiXj7_NWYXF5NBRcPaUyX8sw2z3WQB",
+        excited: "https://drive.google.com/uc?export=view&id=1z-fBPBe044tYjGfGPlJKXEooS3ckV__g",
+        inspired: "https://drive.google.com/uc?export=view&id=1sUTOP6N6kZ7876A1CYpXP_Bf_zWKnBQk",
+        loving: "https://drive.google.com/uc?export=view&id=1AfAY9tNc36wYy-FuKHzIRa9fSnR5deDm",
+        stressed: "https://drive.google.com/uc?export=view&id=1N7X2J7ZbtpmH9Nt84cWHT8xN3OAUjEQC",
+        surprised: "https://drive.google.com/uc?export=view&id=1mfQF2cR8QsKaYbkypsNIiN7YxspC4Zpe",
+        thinking: "https://drive.google.com/uc?export=view&id=16WY5qBprxRUPRcW4-NR5mPIdagZ5e_W9",
+        tired: "https://drive.google.com/uc?export=view&id=1qsgoGsJR-CS9-lUMdWWvBqBJV9r4mpKU",
+        waiting: "https://drive.google.com/uc?export=view&id=1PCeZq4nHxl8pswFNCcwgSOcFxBTFWe9_",
       };
 
       const guessExpression = (text) => {
