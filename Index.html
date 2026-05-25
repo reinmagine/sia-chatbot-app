@@ -495,6 +495,8 @@
         const [messages, setMessages] = useState([]);
         const [inputValue, setInputValue] = useState("");
         const [isTyping, setIsTyping] = useState(false);
+        const [reauthMessage, setReauthMessage] = useState("");
+        const [reauthInProgress, setReauthInProgress] = useState(false);
         const messagesEndRef = useRef(null);
         const inputRef = useRef(null);
 
@@ -893,6 +895,50 @@
           localStorage.setItem(STARTED_STORAGE_KEY, "true");
         };
 
+        const handleTroubleAccess = () => {
+          if (reauthInProgress) return;
+
+          setReauthInProgress(true);
+          setReauthMessage("");
+
+          const finish = (message) => {
+            setReauthInProgress(false);
+            setReauthMessage(String(message || ""));
+          };
+
+          const openAuthUrl = (info) => {
+            const authUrl = String((info && (info.authorizationUrl || info.authUrl)) || "").trim();
+            if (authUrl) {
+              try {
+                window.open(authUrl, "_blank", "noopener,noreferrer");
+                finish("");
+                return;
+              } catch (e) {
+                // Fall through to a friendly message below.
+              }
+            }
+
+            finish((info && info.message) || "No authorization link was returned. Please try again or open the Apps Script editor once.");
+          };
+
+          if (window.google && google.script && google.script.run) {
+            try {
+              google.script.run
+                .withSuccessHandler(openAuthUrl)
+                .withFailureHandler(() => {
+                  finish("I couldn't open the authorization flow from here. Please use the Apps Script editor once, then come back and refresh the web app.");
+                })
+                .getReauthorizationInfo();
+              return;
+            } catch (e) {
+              finish("I couldn't open the authorization flow from here. Please use the Apps Script editor once, then come back and refresh the web app.");
+              return;
+            }
+          }
+
+          finish("Open this app from the deployed Apps Script web app to access the authorization link.");
+        };
+
         const handleResetChat = () => {
           setShowResetConfirm(true);
         };
@@ -990,15 +1036,26 @@
                   <TutorialView onFinish={finishTutorial} isEmbedded={true} />
                 </div>
                 <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-                  <p className="text-[13px] text-gray-400 text-center font-medium">
-                    Ready to begin?
-                  </p>
                   <button
                     onClick={finishTutorial}
                     className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-5 rounded-2xl shadow-xl shadow-indigo-100 transition-all active:scale-[0.98] focus:ring-4 focus:ring-indigo-100"
                   >
                     Get Started
                   </button>
+                  {!USER_ACCESS_ALLOWED ? (
+                    <button
+                      onClick={handleTroubleAccess}
+                      disabled={reauthInProgress}
+                      className="text-[13px] font-medium text-indigo-600 underline underline-offset-4 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 mt-2"
+                    >
+                      Trouble having access? Click here.
+                    </button>
+                  ) : null}
+                  {reauthMessage ? (
+                    <p className="text-[12px] text-center text-gray-400 leading-relaxed max-w-[18rem]">
+                      {reauthMessage}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : (

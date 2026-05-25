@@ -367,7 +367,9 @@ function getCurrentUserAuthDebug_() {
 		if (authInfo) {
 			debug.authStatus = String(authInfo.getAuthorizationStatus() || "unknown");
 			debug.authUrl = String(authInfo.getAuthorizationUrl() || "");
-			const requiredScopes = authInfo.getRequiredScopes();
+			const requiredScopes = (typeof authInfo.getRequiredScopes === "function")
+				? authInfo.getRequiredScopes()
+				: [];
 			debug.requiredScopes = Array.isArray(requiredScopes)
 				? requiredScopes.map(function(scope) {
 					return String(scope || "");

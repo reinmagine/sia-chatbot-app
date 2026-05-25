@@ -8,9 +8,13 @@ entities:
 
 */
 
+
 const INTENTS = [
+
+	/********** COMMSCHED SHEET */
+	// queries that are answered by the COMMSCHED SHEET
 	{
-		name: "check_po_status", // g rephrase mo na
+		name: "check_po_status",
 		phrases: [
 			"PO X status",
 			"status of PO X",
@@ -33,7 +37,7 @@ const INTENTS = [
 		handler: "checkPoStatus"
 	},
 	{
-		name: "check_po_gr_status", // g rephrase mo na
+		name: "check_po_gr_status", 
 		phrases: [
 			"PO X GR status",
 			"GR status of PO X",
@@ -90,8 +94,6 @@ const INTENTS = [
 		requiredEntities: ["PO_NUMBER"],
 		handler: "checkPoTotalValue"
 	},
-
-	/****************** PO AGING ******************/
 	{
 		name: "check_po_aging",
 		phrases: [
@@ -292,6 +294,20 @@ const INTENTS = [
 		],
 		responseType: "list",
 		handler: "listVendorRemainingBalance"
+	},
+
+	/********** GR TICKET SHEET */
+	// queries that are answered by the GR TICKET SHEET
+
+	{
+		name: "check_gr_ticket_status",
+		phrases: [
+			"GR ticket for GR X",
+			"GR ticket status for GR X",
+			"what is the current status of the GR ticket X",
+		],
+		requiredEntities: ["GR_NUMBER"],
+		handler: "checkGrTicketStatus"
 	},
 
 ];
