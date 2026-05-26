@@ -621,6 +621,169 @@ function listVendorRemainingBalance(entities, parsed, context) {
 	return lines.join("\n");
 }
 
+/* New handlers requested: PO fully GR check, open POs by vendor, tagged/not-for-closure lists, low GR% listing */
+function checkPoFullyGrd(entities, parsed, context) {
+	const poNumber = String(entities.PO_NUMBER || "").trim();
+	if (!poNumber) {
+		return getCommschedNotFoundMessage_(poNumber);
+	}
+
+	const lookup = lookupCommschedPoRow_(poNumber, ["ungrdUsd", "remainingBalance", "grBucket", "goodsReceiptAmount", "poAmount"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
+	if (!lookup || !lookup.found) {
+		return getCommschedNotFoundMessage_(poNumber);
+	}
+
+	const ungrdRaw = lookup.values && (lookup.values.ungrdUsd || lookup.values.remainingBalance) ? (lookup.values.ungrdUsd || lookup.values.remainingBalance) : "";
+	const ungrdNum = parseDisplayAmount_(ungrdRaw);
+	if (!isNaN(ungrdNum)) {
+		if (Number(ungrdNum) === 0) {
+			return "YES — <b>PO " + poNumber + "</b> is fully GR'd.";
+		}
+		return "NO — <b>PO " + poNumber + "</b> is not yet fully GR'd.";
+	}
+
+	const grBucket = String(lookup.values && lookup.values.grBucket ? lookup.values.grBucket : "").trim().toUpperCase();
+	if (grBucket.indexOf("H. FULLY GRD") !== -1 || grBucket.indexOf("FULL") !== -1) {
+		return "YES — <b>PO " + poNumber + "</b> is fully GR'd.";
+	}
+	if (grBucket) {
+		return "NO — <b>PO " + poNumber + "</b> is not yet fully GR'd.";
+	}
+
+	return getCommschedNoDataMessage_(poNumber);
+}
+
+function listOpenPosForVendor(entities, parsed, context) {
+	const rawVendor = String(entities.VENDOR || "").trim();
+	if (!rawVendor) return getMissingEntityMessage("VENDOR");
+
+	const dataset = getCommschedRows_( ["vendor", "poNumber", "deliveryComplete", "remainingBalance", "ungrdUsd"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
+	}
+
+	const vendorSet = {};
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		if (vendorName) vendorSet[vendorName] = true;
+	}
+
+	const vendorList = Object.keys(vendorSet);
+	const queryNorm = normalizeText(rawVendor || "");
+	const scoredItems = buildTopTextMatches_(queryNorm, vendorList, 3);
+	const scored = scoredItems.map(function(it) { return { vendor: it.value, score: it.score }; });
+	const top = scored.slice(0, 3);
+	if (top.length === 0) return "No matching vendors found.";
+
+	if (top[0].score >= 0.9) {
+		const chosen = top[0].vendor;
+		const matches = [];
+		for (let i = 0; i < dataset.rows.length; i += 1) {
+			const row = dataset.rows[i] || {};
+			const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+			const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+			const deliveryCompleteValue = String(row.values && row.values.deliveryComplete ? row.values.deliveryComplete : "").trim().toUpperCase();
+			const remainingBalanceValue = String(row.values && row.values.remainingBalance ? row.values.remainingBalance : "").trim();
+			if (!poNumber || vendorName !== chosen) continue;
+			// Open if deliveryComplete !== 'YES' (treat blank as open)
+			if (deliveryCompleteValue === "YES") continue;
+			matches.push([poNumber, vendorName, deliveryCompleteValue || "", remainingBalanceValue || ""]);
+		}
+
+		if (matches.length === 0) return "No matching open POs found.";
+
+		const headers = ["PO Number", "Vendor", "Delivery Complete", "Remaining Balance"];
+		const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+		return buildTableResponse_(headers, matches, { includeCsvDownload: true, csvFilename: "sia-open-pos-" + timestamp + ".csv" });
+	}
+
+	const suggestions = top.map(function(t) { return { id: t.vendor, label: buildFullQueryLabel('list_open_pos_for_vendor', t.vendor) }; });
+	return showDidYouMean(suggestions);
+}
+
+function listPoTaggedForClosure(entities, parsed, context) {
+	// Short general response per user request: no table/CSV output
+	return "POs with PO date 2023 and earlier (older than ~2.5 years) are tagged for closure.";
+}
+
+function listPoNotForClosure(entities, parsed, context) {
+	// Short general response per user request: no table/CSV output
+	return "POs from 2024 onwards are not considered for closure this year.";
+}
+
+function listPoLowGrPercent(entities, parsed, context) {
+	const dataset = getCommschedRows_( ["poNumber", "poDate", "vendor", "poAmount", "goodsReceiptAmount", "grBucket"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
+	}
+
+	const yearFilter = entities.YEAR ? parseInt(String(entities.YEAR || "").trim(), 10) : null;
+	// Allow a PERCENT entity to override the default threshold (default: 30%)
+	const percentFilterRaw = entities.PERCENT ? String(entities.PERCENT || "").trim() : "";
+	let percentThreshold = 30;
+	if (percentFilterRaw) {
+		const p = parseInt(percentFilterRaw, 10);
+		if (!isNaN(p)) percentThreshold = p;
+	}
+	const matches = [];
+
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
+		if (!poNumber) continue;
+
+		// Year filter
+		let year = null;
+		const rawPoDate = row.rawValues && Object.prototype.hasOwnProperty.call(row.rawValues, 'poDate') ? row.rawValues.poDate : (row.values && row.values.poDate ? row.values.poDate : "");
+		const parsedDate = parseDateValue_(rawPoDate);
+		if (parsedDate instanceof Date && !isNaN(parsedDate.getTime())) {
+			year = parsedDate.getFullYear();
+		} else {
+			const display = String(row.values && row.values.poDate ? row.values.poDate : "");
+			const m = display.match(/\b(19|20)\d{2}\b/);
+			if (m) year = parseInt(m[0], 10);
+		}
+		if (yearFilter && year !== null && year !== yearFilter) continue;
+
+		const poAmountRaw = row.values && row.values.poAmount ? row.values.poAmount : "";
+		const grAmountRaw = row.values && row.values.goodsReceiptAmount ? row.values.goodsReceiptAmount : "";
+		const poAmt = parseDisplayAmount_(poAmountRaw);
+		const grAmt = parseDisplayAmount_(grAmountRaw);
+
+		let included = false;
+		let percent = null;
+		if (!isNaN(poAmt) && !isNaN(grAmt) && Number(poAmt) > 0) {
+			percent = (Number(grAmt) / Number(poAmt)) * 100;
+			if (percent <= percentThreshold) included = true;
+		} else {
+			const grBucket = String(row.values && row.values.grBucket ? row.values.grBucket : "").trim().toUpperCase();
+			if (grBucket === "A. ZERO GR" || grBucket === "B. 1-10% GRD" || grBucket === "C. 11-30% GRD") {
+				included = true;
+			}
+		}
+
+		if (included) {
+			const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+			const displayDate = String(row.values && row.values.poDate ? row.values.poDate : "");
+			const percentStr = percent !== null && !isNaN(percent) ? (Math.round(percent * 10) / 10) + "%" : String(row.values && row.values.grBucket ? row.values.grBucket : "");
+			const poAmtDisplay = String(row.values && row.values.poAmount ? row.values.poAmount : "");
+			const grAmtDisplay = String(row.values && row.values.goodsReceiptAmount ? row.values.goodsReceiptAmount : "");
+			const grBucketDisplay = String(row.values && row.values.grBucket ? row.values.grBucket : "");
+			matches.push([poNumber, vendorName, displayDate, percentStr, poAmtDisplay, grAmtDisplay, grBucketDisplay]);
+		}
+	}
+
+	if (matches.length === 0) return "No matching POs found.";
+
+	const headers = ["PO Number", "Vendor", "PO Date", "GR%", "PO Amount", "GR Amount", "GR Bucket"];
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+	return buildTableResponse_(headers, matches, { includeCsvDownload: true, csvFilename: "sia-low-gr-percent-" + percentThreshold + "-" + (yearFilter || "all") + "-" + timestamp + ".csv" });
+}
+
 /* Helpers for unGR'd aggregation provided by helper.js (parseDisplayAmount_, formatMoney_, formatCount_) */
 
 function checkTotalUnGrdVendor(entities, parsed, context) {
