@@ -44,10 +44,7 @@ const INTENTS = [
 			"GR status of PO X",
 			"PO X GR bucketing",
 			"GR bucketing of PO X",
-			"what is the GR bucket of PO X",
-			"is PO X fully GR'd",
-			"is PO X already fully GRed",
-			"check if PO X is fully GRed",
+			"what is the GR bucket of PO X"
 		],
 		requiredEntities: ["PO_NUMBER"],
 		handler: "checkPoGrStatus"
@@ -107,6 +104,18 @@ const INTENTS = [
 		],
 		requiredEntities: ["PO_NUMBER"],
 		handler: "checkPoAging"
+	},
+	{
+		name: "check_po_year",
+		phrases: [
+			"what is the PO year of PO X",
+			"what year was PO X released",
+			"PO year of PO X",
+			"what year was PO X",
+			"when was PO X released"
+		],
+		requiredEntities: ["PO_NUMBER"],
+		handler: "checkPoYear"
 	},
 	{
 		name: "check_po_aging_exceeded",
@@ -295,6 +304,81 @@ const INTENTS = [
 		],
 		responseType: "list",
 		handler: "listVendorRemainingBalance"
+	},
+	
+	/********** NEW: Additional PO queries requested by user */
+	{
+		name: "check_po_fully_grd",
+		intentKeywords: ["gr", "goods receipt", "fully", "grd"],
+		conflictKeywords: ["age", "aging", "old", "closure"],
+		phrases: [
+			"is PO X fully grd",
+			"is PO X fully GR'd",
+			"is PO X fully gred",
+			"is PO X already fully gred",
+			"is PO X fully grd?",
+			"is PO X fully gr'd"
+		],
+		requiredEntities: ["PO_NUMBER"],
+		handler: "checkPoFullyGrd"
+	},
+	{
+		name: "list_open_pos_for_vendor",
+		intentKeywords: ["po", "purchase order", "open"],
+		conflictKeywords: ["age", "aging", "project"],
+		phrases: [
+			"show all open POs for X",
+			"show open POs for X",
+			"list open POs for X",
+			"all open POs from X",
+			"open POs for X"
+		],
+		requiredEntities: ["VENDOR"],
+		responseType: "list",
+		handler: "listOpenPosForVendor"
+	},
+	{
+		name: "list_po_tagged_for_closure",
+		intentKeywords: ["closure", "tagged", "closure year"],
+		conflictKeywords: ["age", "aging"],
+		phrases: [
+			"which POs are tagged for closure",
+			"list POs tagged for closure",
+			"which POs are tagged for closure 2023",
+			"show POs tagged for closure"
+		],
+		// default behaviour: PO Date year <= 2023
+		responseType: "list",
+		handler: "listPoTaggedForClosure"
+	},
+	{
+		name: "list_po_not_for_closure",
+		intentKeywords: ["closure", "not for closure", "not for closure this year"],
+		conflictKeywords: ["age", "aging"],
+		phrases: [
+			"which POs are not for closure this year",
+			"which POs are not for closure",
+			"list POs not for closure",
+			"POs not for closure 2024"
+		],
+		// default behaviour: PO Date year >= 2024
+		responseType: "list",
+		handler: "listPoNotForClosure"
+	},
+	{
+		name: "list_po_low_gr_percent",
+		intentKeywords: ["gr", "gr%", "goods receipt", "gr percent"],
+		conflictKeywords: ["age", "aging"],
+		phrases: [
+			"show POs with low GR%",
+			"show POs with low GR percent",
+			"show POs with <=30% GRd",
+			"show all 2024 POs with low GR%",
+			"list POs with gr percent below 30"
+		],
+		// optional YEAR entity can be provided
+		responseType: "list",
+		handler: "listPoLowGrPercent"
 	},
 
 	/********** GR TICKET SHEET */

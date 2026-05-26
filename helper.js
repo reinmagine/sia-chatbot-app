@@ -1087,12 +1087,17 @@ function getGeminiResponse(userText, options) {
 		checkPoLatestGrDate: checkPoLatestGrDate,
 		checkPoTotalValue: checkPoTotalValue,
 		checkPoAging: checkPoAging,
+		checkPoFullyGrd: checkPoFullyGrd,
 		checkGrTicketStatus: checkGrTicketStatus,
 		checkGrTicketSubmitted: checkGrTicketSubmitted,
 		listPoAging: listPoAging,
 		listProjectDelayedClosure: listProjectDelayedClosure,
 		listPoUrgentCleanup: listPoUrgentCleanup,
 		listPoVendor: listPoVendor,
+		listOpenPosForVendor: listOpenPosForVendor,
+		listPoTaggedForClosure: listPoTaggedForClosure,
+		listPoNotForClosure: listPoNotForClosure,
+		listPoLowGrPercent: listPoLowGrPercent,
 		checkTotalUnGrdVendor: checkTotalUnGrdVendor,
 		listTotalUnGrdVendor: listTotalUnGrdVendor,
 		checkTotalUnGrdDivision: checkTotalUnGrdDivision,
@@ -2002,6 +2007,84 @@ function findExactMatchRowInColumn_(sheet, columnIndex, dataStartRow, lastRow, t
 	}
 
 	return null;
+}
+
+function findRowsInDatasetByExactColumn_(datasetKey, columnFieldKey, targetValue, requestedFieldKeys, options) {
+	const userProfile = resolveDatasetUserProfile_(options);
+	const normalizedRequested = normalizeRequestedFields_(requestedFieldKeys || []);
+	const meta = getDatasetMeta_(datasetKey, [columnFieldKey].concat(normalizedRequested), options);
+	if (!meta) return null;
+
+	const workbook = openSpreadsheetFromLink_(meta.sourceLink);
+	const sheet = workbook.getSheetByName(meta.sheetName);
+	if (!sheet) return null;
+
+	const lastRow = sheet.getLastRow();
+	if (lastRow <= meta.headerRow) {
+		return { meta: meta, rows: [] };
+	}
+
+	const lookupColumn = meta.fieldColumns[columnFieldKey];
+	if (typeof lookupColumn !== 'number' || lookupColumn < 0) return null;
+
+	const rowCount = lastRow - meta.dataStartRow + 1;
+	if (rowCount < 1) return { meta: meta, rows: [] };
+
+	const searchRange = sheet.getRange(meta.dataStartRow, lookupColumn + 1, rowCount, 1);
+	let matches = [];
+	try {
+		const finder = searchRange.createTextFinder(String(targetValue)).matchEntireCell(true);
+		const found = finder.findAll();
+		if (Array.isArray(found) && found.length > 0) {
+			for (let i = 0; i < found.length; i += 1) {
+				const r = found[i];
+				matches.push({ row: r.getRow(), method: 'textFinder' });
+			}
+		}
+	} catch (e) {
+		// ignore and fallback to scanning
+	}
+
+	if (matches.length === 0) {
+		const values = searchRange.getValues();
+		const target = String(targetValue || '').trim();
+		for (let i = 0; i < values.length; i += 1) {
+			if (String(values[i][0] || '').trim() === target) {
+				matches.push({ row: meta.dataStartRow + i, method: 'scan' });
+			}
+		}
+	}
+
+	const shouldFilterByDivision = shouldApplyDivisionFilter_(DATASET_SPECS[datasetKey], userProfile);
+	const divisionColumnIndex = typeof meta.fieldColumns.division === 'number' ? meta.fieldColumns.division : -1;
+	const rows = [];
+
+	for (let i = 0; i < matches.length; i += 1) {
+		const match = matches[i];
+		const rowNum = match.row;
+
+		if (shouldFilterByDivision && divisionColumnIndex >= 0) {
+			const divVal = String(sheet.getRange(rowNum, divisionColumnIndex + 1).getDisplayValue() || '').trim();
+			if (!rowMatchesUserDivision_(divVal, userProfile)) {
+				continue;
+			}
+		}
+
+		const rawRow = sheet.getRange(rowNum, 1, 1, meta.lastColumn).getValues()[0] || [];
+		const displayRow = sheet.getRange(rowNum, 1, 1, meta.lastColumn).getDisplayValues()[0] || [];
+		const rowObj = { rowNumber: rowNum, values: {}, rawValues: {} };
+
+		for (let j = 0; j < normalizedRequested.length; j += 1) {
+			const key = normalizedRequested[j];
+			const colIndex = meta.fieldColumns[key];
+			rowObj.values[key] = (typeof colIndex === 'number' && colIndex >= 0) ? String(displayRow[colIndex] || '').trim() : '';
+			rowObj.rawValues[key] = (typeof colIndex === 'number' && colIndex >= 0) ? rawRow[colIndex] : '';
+		}
+
+		rows.push(rowObj);
+	}
+
+	return { meta: meta, rows: rows };
 }
 
 function findRightmostHeaderColumnByPrefix_(headers, headerPrefix) {

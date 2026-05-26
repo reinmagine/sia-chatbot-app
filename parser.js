@@ -221,7 +221,16 @@ function extractEntitiesFromText(userText) {
 }
 
 function normalizeEntityValue(entityKey, rawValue) {
+	if (!rawValue && rawValue !== 0) return "";
 	if (entityKey === "DATE") {
+		return normalizeText(rawValue).replace(/\s+/g, " ").trim();
+	}
+	if (entityKey === "PERCENT") {
+		// keep only digits for percent normalization (e.g., "30", "30%")
+		return String(rawValue || "").replace(/[^0-9]/g, "").trim();
+	}
+	if (entityKey === "DATE_RANGE") {
+		// keep the range text normalized but handlers will split on the separator
 		return normalizeText(rawValue).replace(/\s+/g, " ").trim();
 	}
 	return normalizeText(rawValue);
@@ -238,6 +247,13 @@ function replaceEntityValuesForMatching(normalizedText, entityMatches) {
 	};
 
 	(entityMatches.DATE || []).forEach((value) => replaceMatch("DATE", value));
+	(entityMatches.DATE_RANGE || []).forEach((value) => {
+		if (!value) return;
+		// dateRange stored as "start||end" — replace both parts to avoid biasing phrase match
+		const parts = String(value).split("||").map(function(p) { return p.trim(); }).filter(Boolean);
+		parts.forEach(function(part) { replaceMatch("DATE", part); });
+	});
+	(entityMatches.PERCENT || []).forEach((value) => replaceMatch("PERCENT", value));
 	(entityMatches.AGE_FILTER || []).forEach((value) => replaceMatch("AGE_FILTER", value));
 	(entityMatches.GR_NUMBER || []).forEach((value) => replaceMatch("GR_NUMBER", value));
 	(entityMatches.PO_NUMBER || []).forEach((value) => replaceMatch("PO_NUMBER", value));
