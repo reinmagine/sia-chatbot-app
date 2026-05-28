@@ -414,6 +414,7 @@ function parseInput(userText) {
 			entities: {},
 			matchedPhrase: null,
 			suggestions: [],
+			rawText: rawText,
 		};
 	}
 
@@ -495,6 +496,7 @@ function parseInput(userText) {
 			confidence: 0,
 			entities: entities,
 			matchedPhrase: null,
+			rawText: rawText,
 		};
 	}
 
@@ -504,6 +506,7 @@ function parseInput(userText) {
 		entities: entities,
 		matchedPhrase: bestPhrase,
 		suggestions: suggestions.slice(0, 3),
+		rawText: rawText,
 	};
 }
 

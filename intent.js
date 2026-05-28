@@ -419,5 +419,76 @@ const INTENTS = [
 		requiredEntities: ["GR_NUMBER"],
 		handler: "checkGrTicketSubmitted"
 	},
+	{
+		name: "check_total_po_amount_vendor",
+		phrases: [
+			"what is the total PO amount for X",
+			"total PO amount for X",
+			"total PO value for X",
+			"what is the total PO amount for {vendor}",
+		],
+		requiredEntities: ["VENDOR"],
+		handler: "checkTotalPoAmountVendor"
+	},
+	{
+		name: "check_downpayment_vendor_or_po",
+		phrases: [
+			"what is the total downpayment released for X",
+			"how much downpayment for X",
+			"downpayment for {vendor}",
+			"downpayment for PO X",
+		],
+		requiredEntities: ["VENDOR"],
+		handler: "checkDownpaymentVendorOrPo"
+	},
+	{
+		name: "list_po_value_by_division",
+		phrases: [
+			"what is the total PO value by division",
+			"total PO value per division",
+			"sum of PO values by division",
+		],
+		handler: "listPoValueByDivision"
+	},
+	{
+		name: "list_pos_by_project",
+		phrases: [
+			"show all POs under X projects",
+			"show all POs under OSP projects",
+			"list POs for project X",
+		],
+		requiredEntities: ["PROJECT"],
+		handler: "listPosByProject"
+	},
+	{
+		name: "list_projects_by_division",
+		phrases: [
+			"which projects belong to X",
+			"which projects belong to Common Infra",
+			"show projects under X division",
+		],
+		requiredEntities: ["DIVISION"],
+		handler: "listProjectsByDivision"
+	},
+	{
+		name: "list_active_pos_for_proponent",
+		phrases: [
+			"what are X's active POs",
+			"what are Dexter Germinal’s active POs",
+			"show active POs for X",
+		],
+		requiredEntities: ["VENDOR"],
+		handler: "listActivePosForProponent"
+	},
+	{
+		name: "list_services_pos_by_division",
+		phrases: [
+			"show all services POs under X",
+			"show all services POs under Common Infra Planning and Engineering",
+			"list service POs for X division",
+		],
+		requiredEntities: ["DIVISION"],
+		handler: "listServicesPosByDivisionAndType"
+	},
 
 ];

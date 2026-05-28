@@ -804,10 +804,26 @@ function parseDisplayAmount_(raw) {
 		text = text.replace(/^\(|\)$/g, "");
 	}
 
-	text = text.replace(/[^0-9.\-]/g, "");
+	// Detect unit suffixes like K, M, B (case-insensitive)
+	let multiplier = 1;
+	const sufMatch = text.match(/([kmb])\b/i);
+	if (sufMatch) {
+		const suf = String(sufMatch[1] || "").toLowerCase();
+		if (suf === "k") multiplier = 1e3;
+		else if (suf === "m") multiplier = 1e6;
+		else if (suf === "b") multiplier = 1e9;
+		text = text.replace(/([kmb])\b/i, "");
+	}
+
+	// Remove currency symbols and stray characters, keep digits, dots and commas
+	text = text.replace(/[^0-9.,\-]/g, "");
+	// Remove grouping commas
+	text = text.replace(/,/g, "");
+
 	const numeric = parseFloat(text);
 	if (isNaN(numeric)) return NaN;
-	return negative ? -Math.abs(numeric) : numeric;
+	const value = numeric * multiplier;
+	return negative ? -Math.abs(value) : value;
 }
 
 function formatCount_(n) {
@@ -1105,6 +1121,13 @@ function getGeminiResponse(userText, options) {
 		listPoDormant: listPoDormant,
 		listPoVendorRemainingBalance: listPoVendorRemainingBalance,
 		listVendorRemainingBalance: listVendorRemainingBalance,
+		checkTotalPoAmountVendor: checkTotalPoAmountVendor,
+		checkDownpaymentVendorOrPo: checkDownpaymentVendorOrPo,
+		listPoValueByDivision: listPoValueByDivision,
+		listPosByProject: listPosByProject,
+		listProjectsByDivision: listProjectsByDivision,
+		listActivePosForProponent: listActivePosForProponent,
+		listServicesPosByDivisionAndType: listServicesPosByDivisionAndType,
 	};
 
 	const handler = handlers[intent.handler];
@@ -1463,6 +1486,14 @@ const DATASET_SPECS = {
 			poSla: { match: "exact", value: "PO SLA" },
 			currency: { match: "exact", value: "Currency" },
 			poAmount: { match: "exact", value: "PO Amount" },
+			// Alternative/variant headers: PO Amount (in USD) [K]
+			poAmountUsdK: { match: "rightmostPrefix", value: "PO Amount (in USD" },
+			// Downpayment column variant
+			downpaymentDp: { match: "rightmostPrefix", value: "Downpayment (DP) in USD" },
+			// PO Type column (e.g. Service, Goods)
+			poType: { match: "exact", value: "PO Type" },
+			// Proponent / Proponent Name (used to filter by proponent like 'Dexter Germinal')
+			proponent: { match: "exact", value: "Proponent" },
 			deliveryComplete: { match: "rightmostPrefix", value: "DELIV COMPLETE?" },
 			latestGrDate: { match: "rightmostPrefix", value: "Latest GR Date as of" },
 			goodsReceiptAmount: { match: "rightmostPrefix", value: "Goods Receipt (as of" },
@@ -1479,6 +1510,10 @@ const DATASET_SPECS = {
 			poSla: "poSlaColumn",
 			currency: "currencyColumn",
 			poAmount: "poAmountColumn",
+			poAmountUsdK: "poAmountUsdKColumn",
+			downpaymentDp: "downpaymentDpColumn",
+			poType: "poTypeColumn",
+			proponent: "proponentColumn",
 			deliveryComplete: "delivColumn",
 			latestGrDate: "latestGrDateColumn",
 			goodsReceiptAmount: "grAmountColumn",
