@@ -63,6 +63,96 @@ function extractAgeFilterMatches(rawText) {
 	return matches;
 }
 
+function extractPercentMatches(rawText) {
+	const input = String(rawText || "").replace(/[‐‑‒–—―−]/g, "-");
+	const patterns = [
+		/\b\d+(?:\.\d+)?\s*%/gi,
+		/\b\d+(?:\.\d+)?\s*(?:percent|pct)\b/gi,
+	];
+	const matches = [];
+	const seen = {};
+
+	patterns.forEach((pattern) => {
+		let match = null;
+		while ((match = pattern.exec(input)) !== null) {
+			const value = String(match[0] || "").trim();
+			const normalizedValue = normalizeText(value);
+			if (!value || seen[normalizedValue]) {
+				continue;
+			}
+
+			seen[normalizedValue] = true;
+			matches.push(value);
+		}
+	});
+
+	return matches;
+}
+
+function parseAmountExpression_(value) {
+	if (value === undefined || value === null) return NaN;
+	if (typeof value === "number") return Number(value);
+
+	let text = String(value || "").trim().toLowerCase();
+	if (!text) return NaN;
+
+	let negative = false;
+	if (/^\(.*\)$/.test(text)) {
+		negative = true;
+		text = text.replace(/^\(|\)$/g, "");
+	}
+
+	text = text.replace(/[$₱€£]/g, " ");
+	text = text.replace(/\b(?:usd|php|ph|peso|pesos|dollars?|us dollars?)\b/g, " ");
+	text = text.replace(/\s+/g, " ").trim();
+
+	let multiplier = 1;
+	const unitMatch = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(k|m|b|thousand|million|billion)\b/);
+	if (unitMatch) {
+		const unit = String(unitMatch[2] || "");
+		if (unit === "k" || unit === "thousand") multiplier = 1e3;
+		else if (unit === "m" || unit === "million") multiplier = 1e6;
+		else if (unit === "b" || unit === "billion") multiplier = 1e9;
+		text = String(unitMatch[1] || "");
+	} else {
+		text = text.replace(/[^0-9.\-]/g, "");
+	}
+
+	const numeric = parseFloat(text);
+	if (isNaN(numeric)) return NaN;
+	const amount = numeric * multiplier;
+	return negative ? -Math.abs(amount) : amount;
+}
+
+function extractAmountMatches(rawText) {
+	const input = String(rawText || "");
+	const patterns = [
+		/\b((?:usd|php|ph|peso|pesos|dollars?|us dollars?)\s*[$₱]?\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:k|m|b|thousand|million|billion))?)\b/gi,
+		/\b([$₱]\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:k|m|b|thousand|million|billion))?)\b/gi,
+		/\b(?:above|over|more than|greater than|at least|>=|greater than or equal to)\s*((?:usd|php|ph|peso|pesos|dollars?|us dollars?)?\s*[$₱]?\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:k|m|b|thousand|million|billion))?(?:\s*(?:usd|php|ph|peso|pesos|dollars?|us dollars?))?)\b/gi,
+		/\b(\d[\d,]*(?:\.\d+)?(?:\s*(?:k|m|b|thousand|million|billion))\s*(?:usd|php|ph|peso|pesos|dollars?|us dollars?))\b/gi,
+		/\b(\d[\d,]*(?:\.\d+)?(?:\s*(?:k|m|b|thousand|million|billion)))\b/gi,
+	];
+	const matches = [];
+	const seen = {};
+
+	patterns.forEach((pattern) => {
+		let match = null;
+		while ((match = pattern.exec(input)) !== null) {
+			const value = String(match[1] || match[0] || "").trim();
+			const normalizedValue = normalizeText(value);
+			if (!value || seen[normalizedValue]) {
+				continue;
+			}
+
+			seen[normalizedValue] = true;
+			matches.push(value);
+		}
+	});
+
+	return matches;
+}
+
 function getGrTicketQueryType(rawText) {
 	const text = normalizeText(rawText);
 	if (!text) {
@@ -73,11 +163,13 @@ function getGrTicketQueryType(rawText) {
 		return "submitted";
 	}
 
-	if (/\b(status|stage|stages|posting|posted|validation|validated|complete|completed|cancel|cancellation|revalidation|resubmitted|pending|sap|wbs)\b/.test(text)) {
+	const hasExplicitTicketReference = /\bgr\s*(?:ticket|case(?:\s*(?:no\.?|number))?|no\.?|number)\b/.test(text) || /\b(?:ticket|case)\b/.test(text);
+	const hasStatusContext = /\b(status|stage|stages|posting|posted|validation|validated|complete|completed|cancel|cancellation|revalidation|resubmitted|sap|wbs)\b/.test(text);
+	if (hasExplicitTicketReference && /\b\d+\b/.test(text)) {
 		return "status";
 	}
 
-	if (/\b(gr|ticket|case)\b/.test(text)) {
+	if (hasStatusContext && /\bgr\b/.test(text)) {
 		return "status";
 	}
 
@@ -180,6 +272,8 @@ function extractEntitiesFromText(userText) {
 	const rawText = String(userText || "");
 	const poMatches = rawText.match(/\b\d{10}\b/g) || [];
 	const grMatches = extractGrTicketMatches(rawText);
+	const percentMatches = extractPercentMatches(rawText);
+	const amountMatches = extractAmountMatches(rawText);
 	// vendor capture: phrases like "from huawei" or "for nokia"
 	const vendorMatches = [];
 	const vendorRegex = /\b(?:from|for)\s+([A-Za-z0-9&.,'()\-\/\s]{2,60})/i;
@@ -212,6 +306,8 @@ function extractEntitiesFromText(userText) {
 	return {
 		PO_NUMBER: poMatches,
 		GR_NUMBER: grMatches,
+		PERCENT: percentMatches,
+		AMOUNT: amountMatches,
 		VENDOR: vendorMatches,
 		DIVISION: divisionMatches,
 		DATE: dateMatches,
@@ -228,6 +324,9 @@ function normalizeEntityValue(entityKey, rawValue) {
 	if (entityKey === "PERCENT") {
 		// keep only digits for percent normalization (e.g., "30", "30%")
 		return String(rawValue || "").replace(/[^0-9]/g, "").trim();
+	}
+	if (entityKey === "AMOUNT") {
+		return normalizeText(rawValue).replace(/\s+/g, " ").trim();
 	}
 	if (entityKey === "DATE_RANGE") {
 		// keep the range text normalized but handlers will split on the separator
@@ -254,6 +353,7 @@ function replaceEntityValuesForMatching(normalizedText, entityMatches) {
 		parts.forEach(function(part) { replaceMatch("DATE", part); });
 	});
 	(entityMatches.PERCENT || []).forEach((value) => replaceMatch("PERCENT", value));
+	(entityMatches.AMOUNT || []).forEach((value) => replaceMatch("AMOUNT", value));
 	(entityMatches.AGE_FILTER || []).forEach((value) => replaceMatch("AGE_FILTER", value));
 	(entityMatches.GR_NUMBER || []).forEach((value) => replaceMatch("GR_NUMBER", value));
 	(entityMatches.PO_NUMBER || []).forEach((value) => replaceMatch("PO_NUMBER", value));

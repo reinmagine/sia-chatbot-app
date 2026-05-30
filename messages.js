@@ -72,6 +72,7 @@ function getMissingEntityMessage(entityKey) {
 		DIVISION: "Please provide a division name",
 		PO_NUMBER: "Please provide a 10-digit PO number",
 		GR_NUMBER: "Please provide a GR ticket case number",
+		AMOUNT: "Please provide an amount threshold",
 		DATE: "Please provide a date (MM/DD/YYYY)",
 		YEAR: "Please provide a year",
 	};

@@ -20,7 +20,7 @@
  * - `listOpenPosForVendor`       → open POs (not YES deliveryComplete)
  * - `listPoTaggedForClosure`     → canned text reply (2023 and earlier)
  * - `listPoNotForClosure`        → canned text reply (2024 onwards)
- * - `listPoLowGrPercent`         → POs with GR% ≤ threshold (default 30%)
+ * - `listPoLowGrPercent`         → POs with GR bucket cells below a threshold (default 30%)
  * - `listPosWithGrMovementBetween` → POs with Latest GR Date in a date range
  * - `listPosStagnantGr`          → POs with no GR movement in N days
  *
@@ -426,31 +426,30 @@ function listPoVendorRemainingBalance(entities, parsed, context) {
 	return lines.join("\n");
 }
 
+function collectVendorRemainingBalanceEntries_(rows) {
+	return buildCurrencySummaryEntries_(rows, {
+		entityField: "vendor",
+		currencyField: "currency",
+		amountFieldCandidates: ["remainingBalance", "ungrdUsd"],
+		resolveEntity: function(value) {
+			const text = String(value || "").trim();
+			return text ? { matched: true, key: text, display: text } : { matched: false, key: "", display: "" };
+		},
+	});
+}
+
 function listVendorRemainingBalance(entities, parsed, context) {
 	const dataset = getCommschedRows_( ["vendor", "ungrdUsd"], context);
 	if (!dataset || !dataset.rows) {
 		return "Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
 	}
 
-	const vendorTotals = {};
-	for (let i = 0; i < dataset.rows.length; i += 1) {
-		const row = dataset.rows[i] || {};
-		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
-		const balanceRaw = String(row.values && row.values.ungrdUsd ? row.values.ungrdUsd : "").trim();
-		if (!vendorName || !balanceRaw) {
-			continue;
-		}
-
-		const numeric = parseDisplayAmount_(balanceRaw);
-		if (isNaN(numeric)) {
-			continue;
-		}
-
-		vendorTotals[vendorName] = (vendorTotals[vendorName] || 0) + numeric;
-	}
-
-	const totals = Object.keys(vendorTotals).map(function(vendor) {
-		return { vendor: vendor, balance: vendorTotals[vendor] };
+	const totals = collectVendorRemainingBalanceEntries_(dataset.rows).map(function(entry) {
+		return {
+			vendor: entry.entityDisplay || entry.entityKey || "",
+			currency: entry.currency || "",
+			balance: Number(entry.total || 0),
+		};
 	});
 
 	if (totals.length === 0) {
@@ -473,6 +472,61 @@ function listVendorRemainingBalance(entities, parsed, context) {
 	}
 
 	return lines.join("\n");
+}
+
+function listVendorPendingGrAboveThreshold(entities, parsed, context) {
+	const rawAmount = String(entities.AMOUNT || "").trim();
+	if (!rawAmount) {
+		return getMissingEntityMessage("AMOUNT");
+	}
+
+	const threshold = parseAmountExpression_(rawAmount);
+	if (isNaN(threshold) || threshold <= 0) {
+		return "Please provide a valid amount threshold.";
+	}
+
+	const rawText = String(parsed && parsed.rawText ? parsed.rawText : "");
+	const currencyHint = /\busd\b|\$/i.test(rawText)
+		? "USD"
+		: (/\bphp\b|\bph\b|₱/i.test(rawText) ? "PHP" : "");
+
+	const dataset = getCommschedRows_(["vendor", "currency", "remainingBalance", "ungrdUsd"], context);
+	if (!dataset || !dataset.rows) {
+		return "Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
+	}
+
+	const entries = collectVendorRemainingBalanceEntries_(dataset.rows).filter(function(entry) {
+		const currency = String(entry.currency || "").trim();
+		const total = Number(entry.total || 0);
+		if (currencyHint && currency && currency.toUpperCase() !== currencyHint) {
+			return false;
+		}
+		return total > threshold;
+	});
+
+	if (entries.length === 0) {
+		return "No vendors found with pending GR above " + (currencyHint ? currencyHint + " " : "") + formatMoney_(threshold) + ".";
+	}
+
+	entries.sort(function(a, b) {
+		return Number(b.total || 0) - Number(a.total || 0);
+	});
+
+	const rows = entries.map(function(entry) {
+		const currency = String(entry.currency || "").trim();
+		return [
+			entry.entityDisplay || entry.entityKey || "",
+			(currency ? currency + " " : "") + formatMoney_(entry.total),
+			formatCount_(entry.posCount),
+		];
+	});
+
+	const headers = ["Vendor", "Remaining Balance", "PO Count"];
+	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+	return buildTableResponse_(headers, rows, {
+		includeCsvDownload: true,
+		csvFilename: "sia-vendors-pending-gr-above-" + String(threshold).replace(/\./g, "-") + "-" + timestamp + ".csv",
+	});
 }
 
 function listPoValueByDivision(entities, parsed, context) {
@@ -685,8 +739,63 @@ function listPoNotForClosure(entities, parsed, context) {
 	return "POs from 2024 onwards are not considered for closure this year.";
 }
 
+function normalizeGrBucketCellValue_(value) {
+	return String(value || "")
+		.replace(/[‐‑‒–—―−]/g, "-")
+		.replace(/\s+/g, " ")
+		.toUpperCase()
+		.trim();
+}
+
+function getGrBucketInfo_(value) {
+	const normalized = normalizeGrBucketCellValue_(value);
+	const buckets = {
+		"A. ZERO GR": { cellValue: "A. ZERO GR", code: "a", label: "A. ZERO GR", rank: 1 },
+		"B. 1-10% GRD": { cellValue: "B. 1-10% GRD", code: "b", label: "1-10% GRD", rank: 2 },
+		"C. 11-30% GRD": { cellValue: "C. 11-30% GRD", code: "c", label: "11-30% GRD", rank: 3 },
+		"D. 31-50% GRD": { cellValue: "D. 31-50% GRD", code: "d", label: "31-50% GRD", rank: 4 },
+		"E. 51-70% GRD": { cellValue: "E. 51-70% GRD", code: "e", label: "51-70% GRD", rank: 5 },
+		"F. 71-90% GRD": { cellValue: "F. 71-90% GRD", code: "f", label: "71-90% GRD", rank: 6 },
+		"G. 91-99% GRD": { cellValue: "G. 91-99% GRD", code: "g", label: "91-99% GRD", rank: 7 },
+		"H. FULLY GRD": { cellValue: "H. FULLY GRD", code: "h", label: "FULLY GRD", rank: 8 },
+	};
+
+	return buckets[normalized] || null;
+}
+
+function resolveGrBucketCellsForFilter_(percentThreshold) {
+	const threshold = Number(percentThreshold);
+	if (isNaN(threshold)) {
+		return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD"];
+	}
+
+	if (threshold <= 0) {
+		return ["A. ZERO GR"];
+	}
+	if (threshold <= 10) {
+		return ["A. ZERO GR", "B. 1-10% GRD"];
+	}
+	if (threshold <= 30) {
+		return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD"];
+	}
+	if (threshold <= 50) {
+		return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD"];
+	}
+	if (threshold <= 70) {
+		return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD", "E. 51-70% GRD"];
+	}
+	if (threshold <= 90) {
+		return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD", "E. 51-70% GRD", "F. 71-90% GRD"];
+	}
+	if (threshold < 100) {
+		return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD", "E. 51-70% GRD", "F. 71-90% GRD", "G. 91-99% GRD"];
+	}
+
+	return ["A. ZERO GR", "B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD", "E. 51-70% GRD", "F. 71-90% GRD", "G. 91-99% GRD", "H. FULLY GRD"];
+}
+
 function listPoLowGrPercent(entities, parsed, context) {
-	const dataset = getCommschedRows_( ["poNumber", "poDate", "vendor", "poAmount", "goodsReceiptAmount", "grBucket"], context);
+	const dataset = getCommschedRows_(["poNumber", "poDate", "vendor", "grBucket"], context);
 	if (!dataset || !dataset.rows) {
 		return "Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
 	}
@@ -698,12 +807,17 @@ function listPoLowGrPercent(entities, parsed, context) {
 		const p = parseInt(percentFilterRaw, 10);
 		if (!isNaN(p)) percentThreshold = p;
 	}
+	const allowedBuckets = resolveGrBucketCellsForFilter_(percentThreshold);
 	const matches = [];
 
 	for (let i = 0; i < dataset.rows.length; i += 1) {
 		const row = dataset.rows[i] || {};
 		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
-		if (!poNumber) continue;
+		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		const rawGrBucket = row.values && row.values.grBucket ? row.values.grBucket : "";
+		const bucketInfo = getGrBucketInfo_(rawGrBucket);
+		if (!poNumber || !vendorName || !bucketInfo) continue;
+		if (allowedBuckets.indexOf(bucketInfo.cellValue) === -1) continue;
 
 		let year = null;
 		const rawPoDate = row.rawValues && Object.prototype.hasOwnProperty.call(row.rawValues, 'poDate') ? row.rawValues.poDate : (row.values && row.values.poDate ? row.values.poDate : "");
@@ -715,41 +829,37 @@ function listPoLowGrPercent(entities, parsed, context) {
 			const m = display.match(/\b(19|20)\d{2}\b/);
 			if (m) year = parseInt(m[0], 10);
 		}
-		if (yearFilter && year !== null && year !== yearFilter) continue;
+		if (yearFilter && year !== yearFilter) continue;
 
-		const poAmountRaw = row.values && row.values.poAmount ? row.values.poAmount : "";
-		const grAmountRaw = row.values && row.values.goodsReceiptAmount ? row.values.goodsReceiptAmount : "";
-		const poAmt = parseDisplayAmount_(poAmountRaw);
-		const grAmt = parseDisplayAmount_(grAmountRaw);
-
-		let included = false;
-		let percent = null;
-		if (!isNaN(poAmt) && !isNaN(grAmt) && Number(poAmt) > 0) {
-			percent = (Number(grAmt) / Number(poAmt)) * 100;
-			if (percent <= percentThreshold) included = true;
-		} else {
-			const grBucket = String(row.values && row.values.grBucket ? row.values.grBucket : "").trim().toUpperCase();
-			if (grBucket === "A. ZERO GR" || grBucket === "B. 1-10% GRD" || grBucket === "C. 11-30% GRD") {
-				included = true;
-			}
-		}
-
-		if (included) {
-			const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
-			const displayDate = String(row.values && row.values.poDate ? row.values.poDate : "");
-			const percentStr = percent !== null && !isNaN(percent) ? (Math.round(percent * 10) / 10) + "%" : String(row.values && row.values.grBucket ? row.values.grBucket : "");
-			const poAmtDisplay = String(row.values && row.values.poAmount ? row.values.poAmount : "");
-			const grAmtDisplay = String(row.values && row.values.goodsReceiptAmount ? row.values.goodsReceiptAmount : "");
-			const grBucketDisplay = String(row.values && row.values.grBucket ? row.values.grBucket : "");
-			matches.push([poNumber, vendorName, displayDate, percentStr, poAmtDisplay, grAmtDisplay, grBucketDisplay]);
-		}
+		matches.push({
+			poNumber: poNumber,
+			vendor: vendorName,
+			grBucket: bucketInfo.cellValue,
+			rank: bucketInfo.rank,
+		});
 	}
 
 	if (matches.length === 0) return "No matching POs found.";
 
-	const headers = ["PO Number", "Vendor", "PO Date", "GR%", "PO Amount", "GR Amount", "GR Bucket"];
+	matches.sort(function(a, b) {
+		if (a.rank !== b.rank) {
+			return a.rank - b.rank;
+		}
+
+		const vendorCompare = String(a.vendor || "").localeCompare(String(b.vendor || ""));
+		if (vendorCompare !== 0) {
+			return vendorCompare;
+		}
+
+		return String(a.poNumber || "").localeCompare(String(b.poNumber || ""));
+	});
+
+	const headers = ["PO Number", "Vendor", "GR Bucket"];
+	const rows = matches.map(function(match) {
+		return [match.poNumber, match.vendor, match.grBucket];
+	});
 	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-	return buildTableResponse_(headers, matches, { includeCsvDownload: true, csvFilename: "sia-low-gr-percent-" + percentThreshold + "-" + (yearFilter || "all") + "-" + timestamp + ".csv" });
+	return buildTableResponse_(headers, rows, { includeCsvDownload: true, csvFilename: "sia-low-gr-percent-" + percentThreshold + "-" + (yearFilter || "all") + "-" + timestamp + ".csv" });
 }
 
 function extractDatesFromText_(text) {

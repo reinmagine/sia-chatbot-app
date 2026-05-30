@@ -107,6 +107,7 @@ const INTENTS = [
 	},
 	{
 		name: "check_po_year",
+		intentKeywords: ["year", "released"],
 		phrases: [
 			"what is the PO year of PO X",
 			"what year was PO X released",
@@ -367,18 +368,44 @@ const INTENTS = [
 	},
 	{
 		name: "list_po_low_gr_percent",
-		intentKeywords: ["gr", "gr%", "goods receipt", "gr percent"],
-		conflictKeywords: ["age", "aging"],
+		intentKeywords: ["gr", "gr%", "goods receipt", "gr percent", "below", "under", "percent", "percentage"],
+		conflictKeywords: ["age", "aging", "ticket", "case", "submitted", "status", "stage"],
 		phrases: [
 			"show POs with low GR%",
 			"show POs with low GR percent",
 			"show POs with <=30% GRd",
 			"show all 2024 POs with low GR%",
-			"list POs with gr percent below 30"
+			"list POs with gr percent below 30",
+			"which POs have GR% below X",
+			"which POs have GR percent below X",
+			"list POs with GR% below X",
+			"show POs with GR% below X",
+			"POs with GR% below X"
 		],
 		// optional YEAR entity can be provided
 		responseType: "list",
 		handler: "listPoLowGrPercent"
+	},
+	{
+		name: "list_vendor_pending_gr_above_threshold",
+		intentKeywords: ["vendor", "vendors", "pending", "gr", "above", "over", "greater", "balance", "ungrd", "million", "usd"],
+		conflictKeywords: ["po", "purchase order", "age", "aging", "division", "project"],
+		phrases: [
+			"which vendors have pending GR above X",
+			"which vendors have pending GR above X USD",
+			"which vendors have pending GR above USD X",
+			"which vendors have pending GR above $X",
+			"which vendors have pending GR over X",
+			"which vendors have pending GR greater than X",
+			"vendors with pending GR above X",
+			"vendors with pending GR over X",
+			"vendors with pending GR greater than X",
+			"list vendors with pending GR above X",
+			"show vendors with pending GR above X"
+		],
+		requiredEntities: ["AMOUNT"],
+		responseType: "list",
+		handler: "listVendorPendingGrAboveThreshold"
 	},
 
 	/********** GR TICKET SHEET */

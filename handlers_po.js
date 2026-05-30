@@ -205,7 +205,7 @@ function checkPoYear(entities, parsed, context) {
 		if (m) year = m[1];
 	}
 	if (!year) return 'Could not determine PO year for <b>PO ' + poNumber + '</b>.';
-	return '<b>PO ' + poNumber + '</b> was created in ' + year + '.';
+	return '<b>PO ' + poNumber + '</b> was released on ' + year + '.';
 }
 
 function checkPoFullyGrd(entities, parsed, context) {
