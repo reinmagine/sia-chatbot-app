@@ -740,7 +740,26 @@
         // Save chat back to storage on updates
         useEffect(() => {
           if (messages.length > 0) {
-            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+            try {
+              const compactMessages = messages.map((message) => {
+                if (!message || !message.download || !message.download.content) {
+                  return message;
+                }
+
+                const { content, ...downloadMeta } = message.download;
+                return {
+                  ...message,
+                  download: downloadMeta,
+                };
+              });
+
+              localStorage.setItem(
+                CHAT_STORAGE_KEY,
+                JSON.stringify(compactMessages),
+              );
+            } catch (e) {
+              // Ignore storage quota / serialization issues for large table exports.
+            }
           }
         }, [messages]);
 

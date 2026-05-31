@@ -44,10 +44,27 @@ const INTENTS = [
 			"GR status of PO X",
 			"PO X GR bucketing",
 			"GR bucketing of PO X",
-			"what is the GR bucket of PO X"
+			"what is the GR bucket of PO X",
+			"what is the GR percentage of PO X"
 		],
 		requiredEntities: ["PO_NUMBER"],
 		handler: "checkPoGrStatus"
+	},
+	{
+		name: "check_po_gr_amount",
+		intentKeywords: ["gr", "goods receipt", "gred", "how much", "how much has been", "received"],
+		conflictKeywords: ["vendor", "vendors", "project", "projects", "division", "divisions"],
+		phrases: [
+			"how much has been GRed for PO X",
+			"how much has been GR'd for PO X",
+			"how much has been received for PO X",
+			"what is the GR amount for PO X",
+			"what is the goods receipt value for PO X",
+			"PO X GR amount",
+			"PO X goods receipt value"
+		],
+		requiredEntities: ["PO_NUMBER"],
+		handler: "checkPoGrAmount"
 	},
 	{
 		name: "check_po_remaining_balance",
@@ -163,6 +180,8 @@ const INTENTS = [
 			"Show me all POs older than X",
 			"Which POs are beyond X",
 			"List of all POs at least 1 year old",
+			"which POs are beyond SLA?",
+			"list POs exceeding standard SLA",
 		],
 		requiredEntities: ["AGE_FILTER"],
 		responseType: "list",
@@ -259,7 +278,8 @@ const INTENTS = [
 			"What is the total unGR'd exposure per division",
 			"total unGR'd exposure per division",
 			"show total unGR'd per division",
-			"list total unGR'd per division"
+			"list total unGR'd per division",
+			"which divisions have the highest unGR'd amount"
 		],
 		responseType: "list",
 		handler: "listTotalUnGrdDivision"

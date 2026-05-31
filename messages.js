@@ -132,6 +132,10 @@ function buildPoAgingReply_(poNumber, bucketInfo, intentName) {
 	}
 
 	if (intentName === "check_po_high_risk") {
+		if (bucketCode === "d") {
+			return boldPo + " is " + bucketLabel + " old from the PO creation date. It is a high risk PO.";
+		}
+
 		if (bucketCode === "e") {
 			return boldPo + " is >24 months old from the PO creation date. It is a high risk legacy PO.";
 		}

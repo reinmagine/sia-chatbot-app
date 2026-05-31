@@ -696,7 +696,7 @@ function listOpenPosForVendor(entities, parsed, context) {
 	const rawVendor = String(entities.VENDOR || "").trim();
 	if (!rawVendor) return getMissingEntityMessage("VENDOR");
 
-	const dataset = getCommschedRows_( ["vendor", "poNumber", "deliveryComplete", "remainingBalance", "ungrdUsd"], context);
+	const dataset = getCommschedRows_( ["vendor", "currency", "poNumber", "deliveryComplete", "remainingBalance", "ungrdUsd"], context);
 	if (!dataset || !dataset.rows) {
 		return "Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.";
 	}
@@ -716,17 +716,22 @@ function listOpenPosForVendor(entities, parsed, context) {
 	for (let i = 0; i < dataset.rows.length; i += 1) {
 		const row = dataset.rows[i] || {};
 		const vendorName = String(row.values && row.values.vendor ? row.values.vendor : "").trim();
+		const currencyValue = String(row.values && row.values.currency ? row.values.currency : "").trim();
 		const poNumber = String(row.values && row.values.poNumber ? row.values.poNumber : "").trim();
 		const deliveryCompleteValue = String(row.values && row.values.deliveryComplete ? row.values.deliveryComplete : "").trim().toUpperCase();
 		const remainingBalanceValue = String(row.values && row.values.remainingBalance ? row.values.remainingBalance : "").trim();
 		if (!poNumber || vendorName !== chosen) continue;
 		if (deliveryCompleteValue === "YES") continue;
-		matches.push([poNumber, vendorName, deliveryCompleteValue || "", remainingBalanceValue || ""]);
+		matches.push([
+			poNumber,
+			vendorName,
+			(currencyValue ? currencyValue + " " : "") + (remainingBalanceValue || ""),
+		]);
 	}
 
 	if (matches.length === 0) return "No matching open POs found.";
 
-	const headers = ["PO Number", "Vendor", "Delivery Complete", "Remaining Balance"];
+	const headers = ["PO Number", "Vendor", "Remaining Balance"];
 	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
 	return buildTableResponse_(headers, matches, { includeCsvDownload: true, csvFilename: "sia-open-pos-" + timestamp + ".csv" });
 }

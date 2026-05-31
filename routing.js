@@ -210,6 +210,7 @@ function getGeminiResponse(userText, options) {
 	const handlers = {
 		checkPoStatus: checkPoStatus,
 		checkPoGrStatus: checkPoGrStatus,
+		checkPoGrAmount: checkPoGrAmount,
 		checkPoRemainingBalance: checkPoRemainingBalance,
 		checkPoLatestGrDate: checkPoLatestGrDate,
 		checkPoTotalValue: checkPoTotalValue,

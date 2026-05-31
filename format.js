@@ -253,7 +253,15 @@ function resolvePoSlaBucketCellsForFilter_(rawFilter) {
 		return ["d. 12-24 months"];
 	}
 
-	if (/(?:^|\s)(?:e\.\s*)?>\s*24\s*months?\b/.test(text) || /\bhigh[-\s]?risk\b/.test(text) || /\blegacy\b/.test(text) || /\b(?:more than|over|beyond|older than)\s*24\s*months?\b/.test(text)) {
+	if (/\bhigh[-\s]?risk\b/.test(text)) {
+		return ["d. 12-24 months", "e. >24 months"];
+	}
+
+	if (/\b(?:exceed(?:ing)?|beyond|over|older than)\s+(?:the\s+)?(?:standard\s+)?sla\b/.test(text)) {
+		return ["d. 12-24 months", "e. >24 months"];
+	}
+
+	if (/(?:^|\s)(?:e\.\s*)?>\s*24\s*months?\b/.test(text) || /\blegacy\b/.test(text) || /\b(?:more than|over|beyond|older than)\s*24\s*months?\b/.test(text)) {
 		return ["e. >24 months"];
 	}
 

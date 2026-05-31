@@ -83,6 +83,29 @@ function checkPoGrStatus(entities, parsed, context) {
 	return bucketReplies[grValue] || getCommschedNoDataMessage_(poNumber);
 }
 
+function checkPoGrAmount(entities, parsed, context) {
+	const poNumber = String(entities.PO_NUMBER || "").trim();
+	if (!poNumber) {
+		return getCommschedNotFoundMessage_(poNumber);
+	}
+
+	const lookup = lookupCommschedPoRow_(poNumber, ["currency", "goodsReceiptAmount"], context);
+	if (lookup && lookup.accessDenied) {
+		return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
+	}
+	if (!lookup || !lookup.found) {
+		return getCommschedNotFoundMessage_(poNumber);
+	}
+
+	const currencyValue = String(lookup.values.currency || "").trim();
+	const grAmountValue = String(lookup.values.goodsReceiptAmount || "").trim();
+	if (!currencyValue || !grAmountValue) {
+		return getCommschedNoDataMessage_(poNumber);
+	}
+
+	return "<b>PO " + poNumber + "</b> has GR'd " + currencyValue + " " + grAmountValue + ".";
+}
+
 function checkPoRemainingBalance(entities, parsed, context) {
 	const poNumber = String(entities.PO_NUMBER || "").trim();
 	if (!poNumber) {

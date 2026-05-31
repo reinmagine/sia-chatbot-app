@@ -37,6 +37,7 @@ function extractAgeFilterMatches(rawText) {
 		/\b(?:<6 months|6-9 months|9-12 months|12-24 months|>24 months)\b/i,
 		/\bhigh[-\s]?risk\b/i,
 		/\blegacy\b/i,
+		/\b(?:exceed(?:ing)?|beyond|over|older than)\s+(?:the\s+)?(?:standard\s+)?sla\b/i,
 		/(?:^|\s)(?:at least|>=|greater than or equal to)\s*\d+\s*(?:months?|mos?|mo|years?|yrs?)\b/i,
 		/(?:^|\s)(?:<|less than|under)\s*\d+\s*(?:months?|mos?|mo|years?|yrs?)\b/i,
 		/(?:^|\s)(?:>|more than|over|beyond|older than)\s*\d+\s*(?:months?|mos?|mo|years?|yrs?)\b/i,
