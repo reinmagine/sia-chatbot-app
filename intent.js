@@ -484,6 +484,17 @@ const INTENTS = [
 		handler: "checkTotalPoAmountVendor"
 	},
 	{
+		name: "check_total_po_amount_division",
+		phrases: [
+			"what is the total PO amount for the X division",
+			"total PO amount for X division",
+			"total PO value for X division",
+			"what is the total PO value by division X",
+		],
+		requiredEntities: ["DIVISION"],
+		handler: "checkTotalPoAmountDivision"
+	},
+	{
 		name: "check_downpayment_vendor_or_po",
 		phrases: [
 			"what is the total downpayment released for X",
@@ -507,7 +518,6 @@ const INTENTS = [
 		name: "list_pos_by_project",
 		phrases: [
 			"show all POs under X projects",
-			"show all POs under OSP projects",
 			"list POs for project X",
 		],
 		requiredEntities: ["PROJECT"],
@@ -517,7 +527,6 @@ const INTENTS = [
 		name: "list_projects_by_division",
 		phrases: [
 			"which projects belong to X",
-			"which projects belong to Common Infra",
 			"show projects under X division",
 		],
 		requiredEntities: ["DIVISION"],
@@ -527,7 +536,6 @@ const INTENTS = [
 		name: "list_active_pos_for_proponent",
 		phrases: [
 			"what are X's active POs",
-			"what are Dexter Germinal’s active POs",
 			"show active POs for X",
 		],
 		requiredEntities: ["VENDOR"],
@@ -537,7 +545,6 @@ const INTENTS = [
 		name: "list_services_pos_by_division",
 		phrases: [
 			"show all services POs under X",
-			"show all services POs under Common Infra Planning and Engineering",
 			"list service POs for X division",
 		],
 		requiredEntities: ["DIVISION"],

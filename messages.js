@@ -312,3 +312,49 @@ function buildUnGrdEntityDisambiguation_(userText) {
 		],
 	};
 }
+
+function extractVendorDivisionSubjectText_(userText) {
+	const raw = String(userText || "").trim();
+	if (!raw) return "";
+
+	const patterns = [
+		/^.*?\bfor\s+(.+)$/i,
+		/^.*?\bof\s+(.+)$/i,
+		/^.*?\bby\s+(.+)$/i,
+		/^.*?\bfrom\s+(.+)$/i,
+	];
+
+	for (let i = 0; i < patterns.length; i += 1) {
+		const match = raw.match(patterns[i]);
+		if (match && match[1]) {
+			return String(match[1]).replace(/[?!.]+$/g, "").trim();
+		}
+	}
+
+	return raw.replace(/[?!.]+$/g, "").trim();
+}
+
+function buildVendorDivisionDisambiguation_(userText) {
+	const subjectText = extractVendorDivisionSubjectText_(userText);
+	const labelPrefix = subjectText ? subjectText + " is a " : "This is a ";
+
+	return {
+		text: "Did you mean:",
+		suggestions: [
+			{
+				id: "vendor-entity",
+				label: labelPrefix + "<b>vendor</b>",
+				displayText: labelPrefix + "vendor",
+				query: String(userText || "").trim(),
+				entityType: "vendor",
+			},
+			{
+				id: "division-entity",
+				label: labelPrefix + "<b>division</b>",
+				displayText: labelPrefix + "division",
+				query: String(userText || "").trim(),
+				entityType: "division",
+			},
+		],
+	};
+}

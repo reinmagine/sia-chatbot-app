@@ -839,6 +839,10 @@
                   .getGeminiResponse(text, {
                     triggerSource,
                     confirmedUnGrdEntityType,
+                    // Also pass the generic confirmedEntityType so new disambiguation flows
+                    // (e.g. vendor vs division for PO totals) can use it without changing client
+                    // behavior. We mirror the unGR entity type into the generic slot.
+                    confirmedEntityType: confirmedUnGrdEntityType,
                   });
                 return;
               } catch (e) {

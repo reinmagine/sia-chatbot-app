@@ -110,6 +110,10 @@ function getRequestContext_(options) {
 		options && typeof options === "object" && !Array.isArray(options) && options.confirmedUnGrdEntityType
 			? String(options.confirmedUnGrdEntityType || "").trim().toLowerCase()
 			: "";
+	const confirmedEntityType =
+		options && typeof options === "object" && !Array.isArray(options) && options.confirmedEntityType
+			? String(options.confirmedEntityType || "").trim().toLowerCase()
+			: confirmedUnGrdEntityType;
 	const explicitReferenceDate = options && typeof options === "object" && !Array.isArray(options) && options.referenceDate
 		? parseDateValue_(options.referenceDate)
 		: null;
@@ -119,6 +123,7 @@ function getRequestContext_(options) {
 		triggerSource: triggerSource,
 		userProfile: userProfile,
 		confirmedUnGrdEntityType: confirmedUnGrdEntityType,
+		confirmedEntityType: confirmedEntityType,
 		referenceDate: referenceDate,
 	};
 }
@@ -174,6 +179,37 @@ function getGeminiResponse(userText, options) {
 
 	let intent = INTENTS.find((i) => i.name === parsed.intent);
 	if (!intent) return fallback;
+	let parsedEntities = Object.assign({}, parsed.entities || {});
+	const rawEntityText = String(parsedEntities.DIVISION || parsedEntities.VENDOR || "").trim();
+	const entityHint = /\bdivision\b/i.test(userText)
+		? "division"
+		: (/\bvendor\b/i.test(userText) ? "vendor" : "");
+	const confirmedEntityHint = String(requestContext.confirmedEntityType || "").trim().toLowerCase();
+
+	if (intent.handler === "checkTotalPoAmountVendor") {
+		if (confirmedEntityHint === "division") {
+			const divisionIntent = INTENTS.find((i) => i && i.handler === "checkTotalPoAmountDivision");
+			if (divisionIntent) {
+				intent = divisionIntent;
+				parsedEntities.DIVISION = rawEntityText || parsedEntities.DIVISION || "";
+			}
+		} else if (confirmedEntityHint === "vendor") {
+			parsedEntities.VENDOR = rawEntityText || parsedEntities.VENDOR || "";
+		} else {
+			const resolvedDivision = rawEntityText ? resolveCanonicalDivision_(rawEntityText) : null;
+			const confidentDivision = resolvedDivision ? isConfidentDivisionMatch_(resolvedDivision, 0.8) : false;
+
+			if (entityHint === "division" || confidentDivision) {
+				const divisionIntent = INTENTS.find((i) => i && i.handler === "checkTotalPoAmountDivision");
+				if (divisionIntent) {
+					intent = divisionIntent;
+					parsedEntities.DIVISION = rawEntityText || parsedEntities.DIVISION || "";
+				}
+			} else {
+				return buildVendorDivisionDisambiguation_(userText);
+			}
+		}
+	}
 
 	const isUnGrdCheckIntent =
 		intent.handler === "checkTotalUnGrdVendor" ||
@@ -236,6 +272,7 @@ function getGeminiResponse(userText, options) {
 		listVendorRemainingBalance: listVendorRemainingBalance,
 		listVendorPendingGrAboveThreshold: listVendorPendingGrAboveThreshold,
 		checkTotalPoAmountVendor: checkTotalPoAmountVendor,
+		checkTotalPoAmountDivision: checkTotalPoAmountDivision,
 		checkDownpaymentVendorOrPo: checkDownpaymentVendorOrPo,
 		listPoValueByDivision: listPoValueByDivision,
 		listPosByProject: listPosByProject,
@@ -252,7 +289,7 @@ function getGeminiResponse(userText, options) {
 	incrementMetricCounter_(intent.handler, requestContext.triggerSource);
 
 	const required = intent.requiredEntities || [];
-	const entities = parsed.entities || {};
+	const entities = parsedEntities;
 	const missingRequired = required.find((key) => !entities[key]);
 	if (missingRequired) {
 		const prompt = getMissingEntityMessage(missingRequired);

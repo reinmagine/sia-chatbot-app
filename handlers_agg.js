@@ -49,6 +49,48 @@ function checkTotalPoAmountVendor(entities, parsed, context) {
 	return 'Vendor <b>' + summary.chosen + '</b> has a total PO amount of ' + formattedTotals + '.';
 }
 
+function checkTotalPoAmountDivision(entities, parsed, context) {
+	const rawDivision = String(entities.DIVISION || '').trim();
+	if (!rawDivision) return getMissingEntityMessage('DIVISION');
+
+	const resolved = resolveCanonicalDivision_(rawDivision || '');
+	if (!resolved.matched) {
+		return buildDivisionDidYouMeanResponse_(rawDivision, 'check_total_po_amount_division', { countError: true });
+	}
+
+	const dataset = getCommschedRows_(['division','currency','poAmount','poAmountUsdK'], context);
+	if (!dataset || !dataset.rows) return 'Cannot find the latest monitoring sheet. Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph for further assistance.';
+
+	const totalsByCurrency = {};
+	let totalRows = 0;
+
+	for (let i = 0; i < dataset.rows.length; i += 1) {
+		const row = dataset.rows[i] || {};
+		const rowDivision = String(row.values && row.values.division ? row.values.division : '').trim();
+		if (!rowDivision) continue;
+		const resolvedRow = resolveCanonicalDivision_(rowDivision);
+		if (!resolvedRow.matched || resolvedRow.canonicalDivision !== resolved.canonicalDivision) continue;
+
+		const currency = String(row.values && row.values.currency ? row.values.currency : '').trim() || '';
+		const rawAmt = row.values && row.values.poAmountUsdK !== undefined ? row.values.poAmountUsdK : (row.values && row.values.poAmount !== undefined ? row.values.poAmount : '');
+		const num = parseDisplayAmount_(rawAmt);
+		if (isNaN(num)) continue;
+
+		totalsByCurrency[currency] = totalsByCurrency[currency] || { total: 0, rows: 0 };
+		totalsByCurrency[currency].total += num;
+		totalsByCurrency[currency].rows += 1;
+		totalRows += 1;
+	}
+
+	if (totalRows === 0) return 'No matching POs found.';
+
+	const currencyParts = Object.keys(totalsByCurrency).map(function(curr) {
+		const info = totalsByCurrency[curr];
+		return (curr ? curr + ' ' : '') + formatMoney_(info.total);
+	});
+	return 'Division <b>' + resolved.canonicalDivision + '</b> has a total PO amount of ' + currencyParts.join(', ') + '.';
+}
+
 function checkDownpaymentVendorOrPo(entities, parsed, context) {
 	const rawVendor = String(entities.VENDOR || '').trim();
 	const poNumber = String(entities.PO_NUMBER || '').trim();

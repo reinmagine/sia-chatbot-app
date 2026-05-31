@@ -157,6 +157,12 @@ function resolveCanonicalDivision_(rawDivision) {
 	};
 }
 
+function isConfidentDivisionMatch_(resolvedDivision, threshold) {
+	const resolved = resolvedDivision || {};
+	const minScore = typeof threshold === "number" ? threshold : 0.8;
+	return Boolean(resolved.matched && resolved.canonicalDivision && Number(resolved.score || 0) >= minScore);
+}
+
 function extractFirstNameFromFullName_(fullName) {
 	const trimmedFullName = String(fullName || "").trim().replace(/\s+/g, " ");
 	if (trimmedFullName) {
