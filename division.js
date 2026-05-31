@@ -2,6 +2,8 @@
  * division.js — Division normalization, canonical resolution, similarity scoring.
  *
  * - `CANONICAL_DIVISIONS_` defines the 10 valid division names including "Admin".
+ * - `DIVISION_ALIASES_` lists normalized alternate names that map to each
+ *   canonical division so common shorthand and short forms resolve exactly.
  * - `resolveCanonicalDivision_()` is the primary entry point: given a raw
  *   division string from a sheet cell or user query, it returns { matched,
  *   canonicalDivision, score } using exact match first, then a weighted
@@ -37,6 +39,77 @@ const CANONICAL_DIVISIONS_ = [
 	"Strategic Partnerships and Programs",
 	"Transformation and Strategy Execution",
 ];
+
+const DIVISION_ALIASES_ = {
+	"Admin": [
+		"admin",
+	],
+	"Build and Deploy": [
+		"build deploy",
+		"bd",
+		"b and d",
+	],
+	"Common Infra Planning and Engineering": [
+		"common infra",
+		"common infrastructure",
+		"cipe",
+	],
+	"Insights Analytics": [
+		"insights analytics",
+		"insights and analytics",
+		"ia",
+	],
+	"Network Digitalization": [
+		"nd",
+		"network digitization",
+		"network digitalisation",
+	],
+	"Network Operations and Assurance": [
+		"noa",
+		"network operations",
+		"network ops",
+	],
+	"Service Planning and Engineering": [
+		"spe",
+		"service planning",
+	],
+	"Shared Services": [
+		"ss",
+		"shared service",
+	],
+	"Strategic Partnerships and Programs": [
+		"spp",
+		"strategic partnerships",
+	],
+	"Transformation and Strategy Execution": [
+		"tse",
+		"transformation strategy execution",
+		"transformation and strategy",
+	],
+};
+
+const DIVISION_ALIAS_TO_CANONICAL_ = (function() {
+	const map = {};
+	for (let i = 0; i < CANONICAL_DIVISIONS_.length; i += 1) {
+		const canonicalDivision = CANONICAL_DIVISIONS_[i];
+		const aliases = DIVISION_ALIASES_[canonicalDivision] || [];
+		for (let j = 0; j < aliases.length; j += 1) {
+			const alias = String(aliases[j] || "").trim();
+			if (!alias) {
+				continue;
+			}
+
+			const normalizedAlias = normalizeDivisionText_(alias);
+			if (!normalizedAlias || map[normalizedAlias]) {
+				continue;
+			}
+
+			map[normalizedAlias] = canonicalDivision;
+		}
+	}
+
+	return map;
+})();
 
 const DIVISION_STOP_WORDS_ = {
 	and: true,
@@ -129,6 +202,14 @@ function resolveCanonicalDivision_(rawDivision) {
 				score: 1,
 			};
 		}
+	}
+
+	if (DIVISION_ALIAS_TO_CANONICAL_[normalizedCandidate]) {
+		return {
+			matched: true,
+			canonicalDivision: DIVISION_ALIAS_TO_CANONICAL_[normalizedCandidate],
+			score: 1,
+		};
 	}
 
 	let bestDivision = "";

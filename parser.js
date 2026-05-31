@@ -286,17 +286,26 @@ function extractEntitiesFromText(userText) {
 		}
 	}
 
-	// division capture: phrases like "for shared services division" or "in Shared Services"
+	// division capture: phrases like "belong to common infra", "under shared services",
+	// or explicit forms like "for shared services division".
 	const divisionMatches = [];
-	const divisionRegex = /\b(?:for|in|from)\s+([A-Za-z0-9&.,'()\-\/\s]{2,60})\s*(?:division)?\b/i;
-	const divisionM = rawText.match(divisionRegex);
-	if (divisionM && divisionM[1]) {
+	const divisionRegexes = [
+		/\b(?:belong(?:s|ing)?\s+to|under|of)\s+(?:the\s+)?(?:division\s+)?([A-Za-z0-9&.,'()\-\/\s]{2,60})(?:\s+division)?\b/i,
+		/\b(?:for|in|from)\s+(?:the\s+)?(?:division\s+)?([A-Za-z0-9&.,'()\-\/\s]{2,60})(?:\s+division)?\b/i,
+	];
+
+	divisionRegexes.forEach(function(divisionRegex) {
+		const divisionM = rawText.match(divisionRegex);
+		if (!divisionM || !divisionM[1]) {
+			return;
+		}
+
 		// Heuristic: if the captured phrase contains words like 'vendor' or 'po ' it's likely not a division
 		const candidate = String(divisionM[1]).trim().replace(/^\bdivision\b\s*/i, "").replace(/\bdivision\b$/i, "").trim();
 		if (candidate && !/\bpo\b|vendor|purchase order|\bgr\b|ticket|case|status|submitted|submission|posting|validation/i.test(candidate)) {
 			divisionMatches.push(candidate);
 		}
-	}
+	});
 	const dateMatches =
 		rawText.match(/\b(?:0?[1-9]|1[0-2])[\/](?:0?[1-9]|[12]\d|3[01])[\/](?:19|20)\d{2}\b/g) ||
 		rawText.match(/\b(?:0?[1-9]|1[0-2])-(?:0?[1-9]|[12]\d|3[01])-(?:19|20)\d{2}\b/g) ||
