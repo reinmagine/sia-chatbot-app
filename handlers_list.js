@@ -929,13 +929,19 @@ function listGrMovement(entities, parsed, context) {
 		if (!po || !grDate) continue;
 		if (grDate >= from && grDate <= to) {
 			const fmt = Utilities.formatDate(grDate, Session.getScriptTimeZone(), 'MMM d, yyyy');
-			matches.push([po, fmt]);
+			matches.push({ po: po, fmt: fmt, grDate: grDate });
 		}
 	}
 	if (matches.length === 0) return 'No POs with GR movement found in the specified range.';
+	matches.sort(function(a, b) {
+		return b.grDate.getTime() - a.grDate.getTime();
+	});
 	const headers = ['PO Number','Latest GR Date'];
+	const rows = matches.map(function(match) {
+		return [match.po, match.fmt];
+	});
 	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
-	return buildTableResponse_(headers, matches, { includeCsvDownload: true, csvFilename: 'sia-pos-gr-movement-' + timestamp + '.csv' });
+	return buildTableResponse_(headers, rows, { includeCsvDownload: true, csvFilename: 'sia-pos-gr-movement-' + timestamp + '.csv' });
 }
 
 function listPosWithGrMovementBetween(entities, parsed, context) {
@@ -972,17 +978,28 @@ function listGrStagnant(entities, parsed, context) {
 		const grDate = parseDateValue_(grRaw);
 		if (!po) continue;
 		if (!grDate) {
-			matches.push([po, 'No GR movement']);
+			matches.push({ po: po, fmt: 'No GR movement', grDate: null });
 			continue;
 		}
 		if ((hasDateRange && grDate < from) || (!hasDateRange && grDate < cutoff)) {
 			const fmt = Utilities.formatDate(grDate, Session.getScriptTimeZone(), 'MMM d, yyyy');
-			matches.push([po, fmt]);
+			matches.push({ po: po, fmt: fmt, grDate: grDate });
 		}
 	}
 	if (matches.length === 0) return hasDateRange ? 'No POs found with stagnant GR in the specified date range.' : 'No POs found with stagnant GR for more than ' + days + ' days.';
+	matches.sort(function(a, b) {
+		if (a.grDate && b.grDate) {
+			return b.grDate.getTime() - a.grDate.getTime();
+		}
+		if (a.grDate && !b.grDate) return -1;
+		if (!a.grDate && b.grDate) return 1;
+		return String(a.po || '').localeCompare(String(b.po || ''));
+	});
 	const headers = ['PO Number','Latest GR Date'];
-	return buildTableResponse_(headers, matches, { includeCsvDownload: false });
+	const rows = matches.map(function(match) {
+		return [match.po, match.fmt];
+	});
+	return buildTableResponse_(headers, rows, { includeCsvDownload: false });
 }
 
 function listPosStagnantGr(entities, parsed, context) {
