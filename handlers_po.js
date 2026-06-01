@@ -212,23 +212,53 @@ function checkPoAging(entities, parsed, context) {
 }
 
 function checkPoYear(entities, parsed, context) {
-	const poNumber = String(entities.PO_NUMBER || '').trim();
-	if (!poNumber) return getMissingEntityMessage('PO_NUMBER');
-	const lookup = lookupCommschedPoRow_(poNumber, ['poDate'], context);
-	if (lookup && lookup.accessDenied) return lookup.message || getCommschedDivisionDeniedMessage_(poNumber);
-	if (!lookup || !lookup.found) return getCommschedNotFoundMessage_(poNumber);
-	const raw = lookup.values && lookup.values.poDate ? lookup.values.poDate : '';
-	if (!raw) return 'No PO date found for <b>PO ' + poNumber + '</b>.';
-	const dt = parseDateValue_(raw);
-	let year = null;
-	if (dt) {
-		year = Utilities.formatDate(dt, Session.getScriptTimeZone(), 'yyyy');
-	} else {
-		const m = String(raw).match(/(\d{4})/);
-		if (m) year = m[1];
-	}
-	if (!year) return 'Could not determine PO year for <b>PO ' + poNumber + '</b>.';
-	return '<b>PO ' + poNumber + '</b> was released on ' + year + '.';
+	const poNumbers = (entities.PO_NUMBERS && entities.PO_NUMBERS.length)
+		? entities.PO_NUMBERS
+		: entities.PO_NUMBER
+		? [entities.PO_NUMBER]
+		: [];
+	if (!poNumbers || poNumbers.length === 0) return getMissingEntityMessage('PO_NUMBER');
+
+	const replies = [];
+	poNumbers.forEach(function(rawPo) {
+		const poNumber = String(rawPo || '').trim();
+		if (!poNumber) {
+			replies.push(getMissingEntityMessage('PO_NUMBER'));
+			return;
+		}
+
+		const lookup = lookupCommschedPoRow_(poNumber, ['poDate'], context);
+		if (lookup && lookup.accessDenied) {
+			replies.push(lookup.message || getCommschedDivisionDeniedMessage_(poNumber));
+			return;
+		}
+		if (!lookup || !lookup.found) {
+			replies.push(getCommschedNotFoundMessage_(poNumber));
+			return;
+		}
+
+		const raw = lookup.values && lookup.values.poDate ? lookup.values.poDate : '';
+		if (!raw) {
+			replies.push('No PO date found for <b>PO ' + poNumber + '</b>.');
+			return;
+		}
+
+		const dt = parseDateValue_(raw);
+		let year = null;
+		if (dt) {
+			year = Utilities.formatDate(dt, Session.getScriptTimeZone(), 'yyyy');
+		} else {
+			const m = String(raw).match(/(\d{4})/);
+			if (m) year = m[1];
+		}
+		if (!year) {
+			replies.push('Could not determine PO year for <b>PO ' + poNumber + '</b>.');
+		} else {
+			replies.push('<b>PO ' + poNumber + '</b> was released on ' + year + '.');
+		}
+	});
+
+	return replies.join('<br>');
 }
 
 function checkPoFullyGrd(entities, parsed, context) {

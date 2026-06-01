@@ -174,7 +174,18 @@ function getGeminiResponse(userText, options) {
 		return parsed.error;
 	}
 	if (!parsed || !parsed.intent) {
-		return fallback;
+		// When the input cannot be parsed into a known intent, return
+		// an out-of-scope reply that asks the user to contact an admin.
+		return finalizeBotResponse_(
+			{
+				text: "I'm still learning and may not be able to handle this request yet. Please contact the admin for assistance. 😊",
+				adminCaveat: true,
+				suggestions: [
+					{ id: "contact-admin", label: "Contact Admin", displayText: "Contact Admin", query: "contact admin" },
+				],
+			},
+			userProfile,
+		);
 	}
 
 	let intent = INTENTS.find((i) => i.name === parsed.intent);
@@ -287,6 +298,25 @@ function getGeminiResponse(userText, options) {
 	const handler = handlers[intent.handler];
 	if (typeof handler !== "function") {
 		return fallback;
+	}
+
+	// Gate list-style (bulk) intents for non-admin users. If the user is not
+	// an admin and the request looks like a list/bulk query, return a caveat
+	// response offering to contact the admin or to "try anyway". If the
+	// client includes `options.forceBulk` we allow the request to proceed.
+	const isListIntent = String((intent && intent.responseType) || "").toLowerCase() === "list" || /^list/i.test(String(intent && intent.name || "")) || /^list/i.test(String(intent && intent.handler || ""));
+	const forceBulk = options && options.forceBulk;
+	if (isListIntent && !userProfile.isAdmin && !forceBulk) {
+		const response = {
+			text: "I\'m still learning and may not be able to handle this request yet. Please contact your admin for assistance.",
+			adminCaveat: true,
+			suggestions: [
+				{ id: "contact-admin", label: "Contact Admin", displayText: "Contact Admin", query: "contact admin" },
+				{ id: "try-anyway", label: "Try anyway", displayText: String(userText || ""), query: String(userText || ""), forceBulk: true },
+			],
+		};
+
+		return finalizeBotResponse_(response, userProfile);
 	}
 
 	incrementMetricCounter_(intent.handler, requestContext.triggerSource);

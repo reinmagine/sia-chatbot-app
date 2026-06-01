@@ -599,6 +599,9 @@ function parseInput(userText) {
 		}
 	});
 
+	// Expose all matched PO numbers as an array for multi-PO handlers
+	entities.PO_NUMBERS = entityMatches.PO_NUMBER || [];
+
 	let bestIntent = null;
 	let bestScore = 0;
 	let bestPhrase = null;
