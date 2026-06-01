@@ -823,6 +823,7 @@
           text,
           triggerSource = "query",
           confirmedUnGrdEntityType = "",
+          extraOptions = {},
         ) => {
           return new Promise((resolve) => {
             // Local small talk interceptor
@@ -836,14 +837,14 @@
                 google.script.run
                   .withSuccessHandler(resolve)
                   .withFailureHandler(() => resolve(null))
-                  .getGeminiResponse(text, {
+                  .getGeminiResponse(text, Object.assign({
                     triggerSource,
                     confirmedUnGrdEntityType,
                     // Also pass the generic confirmedEntityType so new disambiguation flows
                     // (e.g. vendor vs division for PO totals) can use it without changing client
                     // behavior. We mirror the unGR entity type into the generic slot.
                     confirmedEntityType: confirmedUnGrdEntityType,
-                  });
+                  }, extraOptions));
                 return;
               } catch (e) {
                 resolve(null);
@@ -907,6 +908,10 @@
             },
           ]);
           setInputValue("");
+          // Reset textarea height after send
+          try {
+            if (inputRef.current) inputRef.current.style.height = 'auto';
+          } catch (e) {}
           inputRef.current && inputRef.current.focus();
 
           setIsTyping(true);
@@ -1022,10 +1027,12 @@
           await new Promise((r) => setTimeout(r, delay));
 
           try {
+            const extraOptions = isSuggestionPayload && text && text.forceBulk ? { forceBulk: true } : {};
             const resp = await sendToServer(
               sendText,
               triggerSource,
               effectiveUnGrdEntityType,
+              extraOptions,
             );
 
             // Remove any interim 'Please wait' bot-wait messages we may have added
@@ -1211,7 +1218,7 @@
           return (
             <div className="h-full w-full flex flex-col items-center justify-center bg-[#c6d3f8] min-h-screen transition-opacity duration-500">
               <div className="flex flex-col items-center animate-in fade-in duration-700">
-                <LogoMark className="w-24 h-24 rounded-md shadow-lg sia-intro" />
+                <LogoMark className="w-24 h-24 rounded-md sia-intro" />
                 <h1 className="mt-6 text-3xl font-bold text-[#4784d7] tracking-tight sia-intro">
                   SIA
                 </h1>
@@ -1456,13 +1463,21 @@
                     rows="1"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
+                    onInput={(e) => {
+                      try {
+                        e.target.style.height = 'auto';
+                        const max = Math.floor(window.innerHeight * 0.4);
+                        e.target.style.height = Math.min(e.target.scrollHeight, max) + 'px';
+                      } catch (err) {}
+                      setInputValue(e.target.value);
+                    }}
                     onKeyDown={onKeyDown}
                     placeholder={
                       USER_ACCESS_ALLOWED
                         ? "Type a message..."
                         : "Please contact an admin to use the chatbot."
                     }
-                    className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-3.5 text-[15px] focus:outline-none focus:border-[#2d2f8e] focus:ring-2 focus:ring-indigo-100 shadow-sm transition-all max-h-32 overflow-y-auto w-full"
+                    className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-3.5 text-[15px] focus:outline-none focus:border-[#2d2f8e] focus:ring-2 focus:ring-indigo-100 shadow-sm transition-all max-h-[40vh] overflow-y-auto w-full"
                     aria-label="Message input"
                   ></textarea>
                   <button
