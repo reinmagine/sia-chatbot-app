@@ -58,7 +58,7 @@ function doGet() {
 
   return template
     .evaluate()
-    .setTitle('SIA Chat App');
+    .setTitle('SIA: Status & Insights Assistant');
 }
 
 /**
