@@ -889,11 +889,8 @@
         };
 
         const handleSend = async (text, triggerSource = "query") => {
-          const isSuggestionPayload =
-            text && typeof text === "object" && !Array.isArray(text);
-          const raw = isSuggestionPayload
-            ? String(text.label || text.displayText || text.query || "").trim()
-            : String(text || "").trim();
+          const isSuggestionPayload = text && typeof text === "object" && !Array.isArray(text);
+          const raw = isSuggestionPayload ? String(text.label || text.displayText || text.query || "").trim() : String(text || "").trim();
           if (!raw) return;
           const startedAt = Date.now();
 
@@ -908,100 +905,50 @@
             },
           ]);
           setInputValue("");
-          // Reset textarea height after send
-          try {
-            if (inputRef.current) inputRef.current.style.height = 'auto';
-          } catch (e) {}
+          try { if (inputRef.current) inputRef.current.style.height = 'auto'; } catch (e) {}
           inputRef.current && inputRef.current.focus();
 
           setIsTyping(true);
 
-          // If we have a short-lived pending intent and the user replied with a bare PO/GR number,
-          // combine it into the original intent for sending, but still display the bare value.
-          let sendText =
-            isSuggestionPayload && text.query
-              ? String(text.query || "").trim()
-              : raw;
-          const clickedUnGrdEntityType =
-            isSuggestionPayload && text.entityType
-              ? String(text.entityType || "")
-                  .trim()
-                  .toLowerCase()
-              : "";
-          const effectiveUnGrdEntityType =
-            clickedUnGrdEntityType || pendingUnGrdEntityType;
+          // Combine pending intent answers into original phrase when applicable
+          let sendText = isSuggestionPayload && text.query ? String(text.query || "").trim() : raw;
+          const clickedUnGrdEntityType = isSuggestionPayload && text.entityType ? String(text.entityType || "").trim().toLowerCase() : "";
+          const effectiveUnGrdEntityType = clickedUnGrdEntityType || pendingUnGrdEntityType;
           try {
             if (pendingIntent) {
-              if (
-                pendingIntent.missingEntity === "PO_NUMBER" &&
-                /^\d{10}$/.test(raw)
-              ) {
-                if (pendingIntent.phrase) {
-                  sendText = String(pendingIntent.phrase)
-                    .replace(/\bPO X\b/gi, "PO " + raw)
-                    .replace(/\bX\b/gi, raw);
-                } else {
-                  sendText = raw;
-                }
+              if (pendingIntent.missingEntity === "PO_NUMBER" && /^\d{10}$/.test(raw)) {
+                sendText = pendingIntent.phrase ? String(pendingIntent.phrase).replace(/\bPO X\b/gi, "PO " + raw).replace(/\bX\b/gi, raw) : raw;
                 setPendingIntent(null);
-              } else if (
-                pendingIntent.missingEntity === "GR_NUMBER" &&
-                /^\d{1,9}$/.test(raw)
-              ) {
-                if (pendingIntent.phrase) {
-                  sendText = String(pendingIntent.phrase)
-                    .replace(/\bGR X\b/gi, "GR " + raw)
-                    .replace(/\bX\b/gi, raw)
-                    .replace(/\s+/g, " ")
-                    .trim();
-                } else {
-                  sendText = "GR ticket status for GR " + raw;
-                }
+              } else if (pendingIntent.missingEntity === "GR_NUMBER" && /^\d{1,9}$/.test(raw)) {
+                sendText = pendingIntent.phrase ? String(pendingIntent.phrase).replace(/\bGR X\b/gi, "GR " + raw).replace(/\bX\b/gi, raw).replace(/\s+/g, " ").trim() : "GR ticket status for GR " + raw;
                 setPendingIntent(null);
               } else if (pendingIntent.missingEntity === "AGE_FILTER" && raw) {
-                if (pendingIntent.phrase) {
-                  sendText = String(pendingIntent.phrase)
-                    .replace(/\bX\b/gi, raw)
-                    .replace(/\s+/g, " ")
-                    .trim();
-                } else {
-                  sendText = "List all POs " + raw + " old";
-                }
+                sendText = pendingIntent.phrase ? String(pendingIntent.phrase).replace(/\bX\b/gi, raw).replace(/\s+/g, " ").trim() : "List all POs " + raw + " old";
                 setPendingIntent(null);
               } else if (pendingIntent.missingEntity === "VENDOR" && raw) {
-                // Combine vendor reply into the original intent phrase (replace X)
-                if (pendingIntent.phrase) {
-                  sendText = String(pendingIntent.phrase)
-                    .replace(/\bX\b/gi, raw)
-                    .replace(/\s+/g, " ")
-                    .trim();
-                } else {
-                  // If no phrase available, try a conservative full-query
-                  sendText = "List all POs from " + raw;
-                }
+                sendText = pendingIntent.phrase ? String(pendingIntent.phrase).replace(/\bX\b/gi, raw).replace(/\s+/g, " ").trim() : "List all POs from " + raw;
                 setPendingIntent(null);
               }
             }
-
-            if (
-              clickedUnGrdEntityType === "vendor" ||
-              clickedUnGrdEntityType === "division"
-            ) {
+            if (clickedUnGrdEntityType === "vendor" || clickedUnGrdEntityType === "division") {
               setPendingUnGrdEntityType(clickedUnGrdEntityType);
             }
           } catch (e) {
             sendText = raw;
           }
 
+          // Sentence splitter utility
+          const splitIntoSentences = (t) => {
+            if (!t) return [];
+            const matches = String(t || "").match(/[^.!?]+[.!?]?/g);
+            return matches ? matches.map((s) => s.trim()).filter(Boolean) : [];
+          };
+
           let shouldShowWait = false;
           if (USER_ACCESS_ALLOWED) {
             try {
               const intentInfo = await getIntentInfo(raw);
-              if (
-                intentInfo &&
-                intentInfo.isList &&
-                intentInfo.hasRequiredEntities
-              ) {
+              if (intentInfo && intentInfo.isList && intentInfo.hasRequiredEntities) {
                 shouldShowWait = true;
               } else if (!intentInfo) {
                 shouldShowWait = isLikelyListQuery(raw);
@@ -1028,93 +975,67 @@
 
           try {
             const extraOptions = isSuggestionPayload && text && text.forceBulk ? { forceBulk: true } : {};
-            const resp = await sendToServer(
-              sendText,
-              triggerSource,
-              effectiveUnGrdEntityType,
-              extraOptions,
-            );
+
+            // Prepare sentences or single entry to process
+            const sentences = splitIntoSentences(sendText || raw);
+            const MAX_SENTENCES = 5;
+            let toProcess = sentences.length > 1 ? sentences : [sendText];
+            if (sentences.length > MAX_SENTENCES) {
+              toProcess = sentences.slice(0, MAX_SENTENCES);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: "bot-caveat-" + Date.now(),
+                  who: "bot",
+                  text: `I detected ${sentences.length} questions — processing the first ${MAX_SENTENCES} now.`,
+                  expression: "waiting",
+                  ts: new Date().toISOString(),
+                },
+              ]);
+            }
+
+            // Send requests in parallel and preserve order
+            const respPromises = toProcess.map((s) => sendToServer(s, triggerSource, effectiveUnGrdEntityType, extraOptions));
+            const responses = await Promise.all(respPromises);
 
             // Remove any interim 'Please wait' bot-wait messages we may have added
-            setMessages((prev) =>
-              prev.filter(
-                (m) => !(m.id && String(m.id).startsWith("bot-wait-")),
-              ),
-            );
+            setMessages((prev) => prev.filter((m) => !(m.id && String(m.id).startsWith("bot-wait-"))));
 
-            // If no response (offline / no server), do not insert placeholder replies
-            if (
-              resp === null ||
-              resp === undefined ||
-              String(resp).trim() === ""
-            ) {
-              setIsTyping(false);
-              return;
-            }
+            // If no responses at all, bail
+            const anyValid = responses.some((r) => r !== null && r !== undefined && String(r).trim() !== "");
+            if (!anyValid) { setIsTyping(false); return; }
 
-            const isStructuredResponse =
-              resp && typeof resp === "object" && !Array.isArray(resp);
-            const textVal = isStructuredResponse
-              ? String(resp.text || "")
-              : String(resp || "");
-            const elapsedSeconds = Math.max(
-              1,
-              Math.round((Date.now() - startedAt) / 1000),
-            );
-            const responseText =
-              isStructuredResponse && resp.download
-                ? `${textVal.trim()} (Generated in ${elapsedSeconds}s)`
-                : textVal;
-            // If server returned a pendingIntent, store it short-term for the next user turn
-            if (resp && resp.pendingIntent) {
-              setPendingIntent(resp.pendingIntent);
-            }
+            // Append each response as its own bot message (keeps order)
+            responses.forEach((resp) => {
+              if (resp === null || resp === undefined || String(resp).trim() === "") return;
+              const isStructuredResponse = resp && typeof resp === "object" && !Array.isArray(resp);
+              const textVal = isStructuredResponse ? String(resp.text || "") : String(resp || "");
+              const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+              const responseText = isStructuredResponse && resp.download ? `${textVal.trim()} (Generated in ${elapsedSeconds}s)` : textVal;
 
-            if (
-              isStructuredResponse &&
-              Array.isArray(resp.suggestions) &&
-              resp.suggestions.length > 0
-            ) {
-              const suggestionType = String(
-                resp.suggestions[0] && resp.suggestions[0].entityType
-                  ? resp.suggestions[0].entityType
-                  : "",
-              )
-                .trim()
-                .toLowerCase();
-              if (
-                suggestionType === "vendor" ||
-                suggestionType === "division"
-              ) {
-                setPendingUnGrdEntityType(suggestionType);
+              if (resp && resp.pendingIntent) setPendingIntent(resp.pendingIntent);
+
+              if (isStructuredResponse && Array.isArray(resp.suggestions) && resp.suggestions.length > 0) {
+                const suggestionType = String(resp.suggestions[0] && resp.suggestions[0].entityType ? resp.suggestions[0].entityType : "").trim().toLowerCase();
+                if (suggestionType === "vendor" || suggestionType === "division") setPendingUnGrdEntityType(suggestionType);
+              } else if (!resp.pendingIntent) {
+                setPendingUnGrdEntityType("");
               }
-            } else if (!resp.pendingIntent) {
-              setPendingUnGrdEntityType("");
-            }
 
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: "bot-" + Date.now(),
-                who: "bot",
-                text: responseText,
-                expression:
-                  isStructuredResponse && resp.expression
-                    ? resp.expression
-                    : guessExpression(textVal),
-                suggestions:
-                  isStructuredResponse && Array.isArray(resp.suggestions)
-                    ? resp.suggestions
-                    : undefined,
-                hideSuggestionHeader:
-                  isStructuredResponse && Boolean(resp.hideSuggestionHeader),
-                download:
-                  isStructuredResponse && resp.download
-                    ? resp.download
-                    : undefined,
-                ts: new Date().toISOString(),
-              },
-            ]);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: "bot-" + Date.now() + Math.floor(Math.random() * 1000),
+                  who: "bot",
+                  text: responseText,
+                  expression: isStructuredResponse && resp.expression ? resp.expression : guessExpression(textVal),
+                  suggestions: isStructuredResponse && Array.isArray(resp.suggestions) ? resp.suggestions : undefined,
+                  hideSuggestionHeader: isStructuredResponse && Boolean(resp.hideSuggestionHeader),
+                  download: isStructuredResponse && resp.download ? resp.download : undefined,
+                  ts: new Date().toISOString(),
+                },
+              ]);
+            });
           } catch (e) {
             setMessages((prev) => [
               ...prev,
