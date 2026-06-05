@@ -811,12 +811,15 @@ function listPoLowGrPercent(entities, parsed, context) {
 
 	const yearFilter = entities.YEAR ? parseInt(String(entities.YEAR || "").trim(), 10) : null;
 	const percentFilterRaw = entities.PERCENT ? String(entities.PERCENT || "").trim() : "";
-	let percentThreshold = 30;
+	let percentThreshold = null;
 	if (percentFilterRaw) {
 		const p = parseInt(percentFilterRaw, 10);
 		if (!isNaN(p)) percentThreshold = p;
 	}
-	const allowedBuckets = resolveGrBucketCellsForFilter_(percentThreshold);
+	// Default "partially GR'd" (no explicit percent): B–G (excludes A. ZERO GR and H. FULLY GRD)
+	const allowedBuckets = percentThreshold !== null
+		? resolveGrBucketCellsForFilter_(percentThreshold)
+		: ["B. 1-10% GRD", "C. 11-30% GRD", "D. 31-50% GRD", "E. 51-70% GRD", "F. 71-90% GRD", "G. 91-99% GRD"];
 	const matches = [];
 
 	for (let i = 0; i < dataset.rows.length; i += 1) {
@@ -868,7 +871,8 @@ function listPoLowGrPercent(entities, parsed, context) {
 		return [match.poNumber, match.vendor, match.grBucket];
 	});
 	const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-	return buildTableResponse_(headers, rows, { includeCsvDownload: true, csvFilename: "sia-low-gr-percent-" + percentThreshold + "-" + (yearFilter || "all") + "-" + timestamp + ".csv" });
+	const pctLabel = percentThreshold !== null ? String(percentThreshold) : "partial";
+	return buildTableResponse_(headers, rows, { includeCsvDownload: true, csvFilename: "sia-low-gr-percent-" + pctLabel + "-" + (yearFilter || "all") + "-" + timestamp + ".csv" });
 }
 
 function extractDatesFromText_(text) {
