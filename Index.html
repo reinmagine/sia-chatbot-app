@@ -947,10 +947,57 @@
           }
 
           // Sentence splitter utility
+          // Splits on genuine sentence boundaries (.!? + whitespace) but
+          // rejoins fragments where the previous fragment ends with an
+          // abbreviation or initial (e.g. "M.", "Inc.", "No.") so that
+          // vendor names like "M.J. Villanueva" are not broken apart.
           const splitIntoSentences = (t) => {
             if (!t) return [];
-            const matches = String(t || "").match(/[^.!?]+[.!?]?/g);
-            return matches ? matches.map((s) => s.trim()).filter(Boolean) : [];
+            const text = String(t || "").trim();
+            if (!text) return [];
+
+            // Split on sentence-ending punctuation followed by whitespace.
+            // ? and ! are almost always sentence terminators; . needs
+            // post-processing to avoid splitting on abbreviations.
+            const rawParts = text.split(/(?<=[.!?])\s+/);
+            if (rawParts.length <= 1) {
+              return rawParts.map((s) => s.trim()).filter(Boolean);
+            }
+
+            // Known abbreviation patterns that should NOT end a sentence:
+            // - Single uppercase letter + period (initials: "M.", "J.")
+            // - Common abbreviation words (Inc., Corp., Co., Ltd., etc., No., vs.)
+            const endsWithAbbrev = (str) => {
+              const trimmed = String(str || "").trim();
+              return /\b(?:[A-Z]\.|(?:Inc|Corp|Co|Ltd|etc|No|vs)\.)$/i.test(trimmed);
+            };
+
+            const isContinuation = (str) => {
+              const trimmed = String(str || "").trim();
+              return /^[a-z0-9]/.test(trimmed);
+            };
+
+            // Rejoin fragments that belong to the same sentence
+            const merged = [];
+            let buffer = "";
+            for (let i = 0; i < rawParts.length; i += 1) {
+              const part = String(rawParts[i] || "").trim();
+              if (!part) continue;
+
+              if (buffer) {
+                if (endsWithAbbrev(buffer) || isContinuation(part)) {
+                  buffer += " " + part;
+                } else {
+                  merged.push(buffer.trim());
+                  buffer = part;
+                }
+              } else {
+                buffer = part;
+              }
+            }
+            if (buffer) merged.push(buffer.trim());
+
+            return merged.filter(Boolean);
           };
 
           let shouldShowWait = false;
