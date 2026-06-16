@@ -51,7 +51,7 @@ function doGet() {
     fullName: String(userProfile.fullName || '').trim(),
     accessDeniedMessage: getAccessDeniedMessage_(),
     headerBaseText: 'Status & Insights Assistant',
-    headerDeniedText: 'Please contact an admin to use the chatbot.',
+    headerDeniedText: 'Please contact the admin team at ntg-bmsocapexsettlement@globe.com.ph to use the chatbot.',
   };
 
   template.userContextJson = JSON.stringify(userContext).replace(/</g, '\\u003c');

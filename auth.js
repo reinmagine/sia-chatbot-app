@@ -46,6 +46,7 @@ function getCurrentUserEmailCandidates_() {
 		// If the active user cannot be resolved, treat the user as unauthenticated.
 	}
 
+	/**
 	try {
 		const effectiveUser = Session.getEffectiveUser();
 		if (effectiveUser && typeof effectiveUser.getEmail === "function") {
@@ -53,7 +54,7 @@ function getCurrentUserEmailCandidates_() {
 		}
 	} catch (error) {
 		// Ignore fallback lookup failures.
-	}
+	} */
 
 	return candidates;
 }
