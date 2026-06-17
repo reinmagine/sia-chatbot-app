@@ -63,7 +63,7 @@ function getCurrentUserSessionCacheKey_() {
 	try {
 		const tempKey = String(Session.getTemporaryActiveUserKey() || "").trim();
 		if (tempKey) {
-			return "userProfile:" + tempKey;
+			return "profile_v2:" + tempKey;
 		}
 	} catch (error) {
 		// Ignore and fall back to an email-based key.
@@ -71,10 +71,10 @@ function getCurrentUserSessionCacheKey_() {
 
 	const email = getCurrentUserEmail_();
 	if (email) {
-		return "userProfile:" + email;
+		return "profile_v2:" + email;
 	}
 
-	return "userProfile:guest";
+	return "profile_v2:guest";
 }
 
 function normalizeEmailAddress_(value) {
