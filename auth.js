@@ -321,7 +321,7 @@ function getCurrentUserProfile_(options) {
 		profile.emailColumns = getEmailSheetColumnMap_();
 	}
 
-	setCachedJson_(cacheKey, profile, 21600);
+	setCachedJson_(cacheKey, profile, 900);
 
 	return profile;
 }
